@@ -284,12 +284,78 @@ const saveSale = async () => {
 
 <style scoped>
 
+/* ===============================
+   SCANNER RESPONSIVE
+=============================== */
+
+/* Modal específico del scanner */
+.modal.scanner {
+  background: #ffffff;
+  width: 95%;
+  max-width: 520px;
+  border-radius: 20px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 25px 50px rgba(0,0,0,.25);
+}
+
+/* Contenedor de cámara */
 .scanner-view {
   width: 100%;
-  height: 320px;
-  border-radius: 14px;
+  aspect-ratio: 4 / 3;          /* 🔑 mantiene proporción */
+  max-height: 70vh;             /* 🔑 no se sale en móviles */
+  border-radius: 16px;
   overflow: hidden;
+  background: black;
+  position: relative;
 }
+
+/* Video de Quagga */
+.scanner-view video,
+.scanner-view canvas {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;            /* 🔑 adapta cámara a pantalla */
+}
+
+/* Botón cancelar */
+.modal.scanner .btn-cancel {
+  width: 100%;
+  padding: 12px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* 📱 MÓVILES */
+@media (max-width: 480px) {
+  .modal.scanner {
+    width: 100%;
+    height: 100vh;
+    max-width: none;
+    border-radius: 0;
+    justify-content: center;
+  }
+
+  .scanner-view {
+    aspect-ratio: auto;
+    height: 70vh;
+  }
+}
+
+/* 📲 TABLETS */
+@media (min-width: 481px) and (max-width: 1024px) {
+  .modal.scanner {
+    max-width: 700px;
+  }
+
+  .scanner-view {
+    aspect-ratio: 16 / 9;
+  }
+}
+
 
 .pos-layout {
   min-height: 100vh;
