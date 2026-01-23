@@ -397,5 +397,93 @@ onMounted(loadProducts);
   }
 }
 
+/* ===============================
+   MODAL – REGISTRO / EDICIÓN
+=============================== */
+
+.modal {
+  background: #ffffff;
+  width: 100%;
+  max-width: 420px;
+  border-radius: 16px;
+  padding: 22px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: modalFade 0.25s ease-out;
+}
+
+.modal h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  text-align: center;
+}
+
+/* INPUTS */
+.modal input[type="text"],
+.modal input[type="number"],
+.modal input[type="file"] {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  font-size: 14px;
+  outline: none;
+}
+
+.modal input:focus {
+  border-color: #6366f1;
+}
+
+/* PREVIEW IMAGEN */
+.preview-img {
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+/* BOTONES */
+.modal button {
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-primary {
+  background: #6366f1;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #4f46e5;
+}
+
+.btn-cancel {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.btn-cancel:hover {
+  background: #d1d5db;
+}
+
+/* ANIMACIÓN */
+@keyframes modalFade {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
 
 </style>
