@@ -1,7 +1,8 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { supabase } from '../lib/supabase'
 import Swal from 'sweetalert2'
+import Quagga from 'quagga'
 
 import Cart from '../components/Cart.vue'
 import PaymentModal from '../components/PaymentModal.vue'
@@ -9,13 +10,110 @@ import PaymentModal from '../components/PaymentModal.vue'
 const products = ref([])
 const cart = ref([])
 const showPayment = ref(false)
-const showProductsModal = ref(false)
 const paymentMethod = ref('cash')
 const user = ref(null)
 const loading = ref(false)
-const filterName = ref('')
-const showProducts = ref(false)
 
+
+const updateQuantity = (id, newQty) => {
+  const item = cart.value.find(p => p.id === id)
+  if (!item) return
+
+  if (newQty <= 0) {
+    cart.value = cart.value.filter(p => p.id !== id)
+    return
+  }
+
+  if (newQty > item.stock) return
+
+  item.quantity = newQty
+}
+
+
+/* =========================
+   SCANNER CÁMARA
+========================= */
+const showScanner = ref(false)
+let scanning = false
+
+const startScanner = async () => {
+  showScanner.value = true
+
+  await nextTick() // 🔑 ESPERA A QUE #scanner EXISTA
+
+  const target = document.querySelector('#scanner')
+  if (!target) {
+    Swal.fire('Error', 'No se pudo iniciar la cámara', 'error')
+    return
+  }
+
+  Quagga.init({
+    inputStream: {
+      name: 'Live',
+      type: 'LiveStream',
+      target: target,
+      constraints: {
+        facingMode: 'environment'
+      }
+    },
+    decoder: {
+      readers: ['code_128_reader', 'ean_reader', 'ean_8_reader']
+    }
+  }, (err) => {
+    if (err) {
+      console.error(err)
+      Swal.fire('Error', 'No se pudo abrir la cámara', 'error')
+      return
+    }
+    Quagga.start()
+    scanning = true
+  })
+
+  Quagga.offDetected()
+  Quagga.onDetected(onDetected)
+}
+
+
+const stopScanner = () => {
+  if (scanning) {
+    Quagga.stop()
+    scanning = false
+  }
+  showScanner.value = false
+}
+
+
+const onDetected = (data) => {
+  const scannedCode = data.codeResult.code
+    .trim()
+    .toUpperCase()
+    .replace(/\s/g, '')
+
+  const product = products.value.find(p =>
+    p.barcode
+      ?.trim()
+      .toUpperCase()
+      .replace(/\s/g, '') === scannedCode
+  )
+
+  if (product) {
+    addToCart(product)
+    stopScanner()
+
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: 'success',
+      title: `Producto agregado: ${product.name}`,
+      showConfirmButton: false,
+      timer: 1000
+    })
+  }
+}
+
+/* =========================
+   CARGAR PRODUCTOS
+========================= */
 const loadProducts = async () => {
   const { data: auth } = await supabase.auth.getUser()
   user.value = auth.user
@@ -30,18 +128,16 @@ const loadProducts = async () => {
 }
 
 onMounted(loadProducts)
+onBeforeUnmount(stopScanner)
 
-const filteredProducts = computed(() =>
-  products.value.filter(p =>
-    p.name.toLowerCase().includes(filterName.value.toLowerCase())
-  )
-)
-
+/* =========================
+   CARRITO
+========================= */
 const addToCart = (product) => {
   const item = cart.value.find(p => p.id === product.id)
 
   if (item) {
-    if (item.quantity < product.stock) item.quantity += 1
+    if (item.quantity < product.stock) item.quantity++
   } else {
     cart.value.push({ ...product, quantity: 1 })
   }
@@ -60,20 +156,31 @@ const removeFromCart = (id) => {
   cart.value = cart.value.filter(p => p.id !== id)
 }
 
-const updateQuantity = (id, value) => {
+const increaseQty = (id) => {
   const item = cart.value.find(p => p.id === id)
-  if (item) {
-    const qty = Number(value)
-    if (!isNaN(qty) && qty >= 0 && qty <= item.stock) {
-      item.quantity = qty
-    }
-  }
+  if (item && item.quantity < item.stock) item.quantity++
 }
 
+const decreaseQty = (id) => {
+  const item = cart.value.find(p => p.id === id)
+  if (!item) return
+  item.quantity--
+  if (item.quantity <= 0) removeFromCart(id)
+}
+
+/* =========================
+   TOTAL
+========================= */
 const total = computed(() =>
-  cart.value.reduce((sum, p) => sum + p.price * p.quantity, 0)
+  cart.value.reduce(
+    (sum, p) => sum + p.price * p.quantity,
+    0
+  )
 )
 
+/* =========================
+   GUARDAR VENTA (SIN CAMBIOS)
+========================= */
 const saveSale = async () => {
   if (!cart.value.length) {
     return Swal.fire('Carrito vacío', 'Agrega productos', 'warning')
@@ -122,66 +229,42 @@ const saveSale = async () => {
 }
 </script>
 
+
+
 <template>
   <div class="pos-layout">
 
     <div class="cart-wrapper">
 
-      <!-- HEADER POS -->
       <div class="pos-header">
         <div>
           <h2>Punto de Venta</h2>
-          <p class="subtitle">
-            Registra ventas y cobra a tus clientes rápidamente
-          </p>
+          <p class="subtitle">Escanea productos con la cámara</p>
         </div>
 
-        <button class="btn-primary" @click="showProducts = true">
-          ➕ Agregar productos
+        <button class="btn-primary" @click="startScanner">
+          📷 Escanear producto
         </button>
       </div>
 
-      <!-- CARRITO -->
       <Cart
         :cart="cart"
         :total="total"
         @remove="removeFromCart"
         @update-quantity="updateQuantity"
-        @pay="showPayment = true"
+        @pay="pay"
       />
 
     </div>
 
-    <!-- MODAL PRODUCTOS -->
-    <div v-if="showProducts" class="modal-backdrop">
-      <div class="modal large">
-        <div class="modal-header">
-          <h3>Seleccionar productos</h3>
-          <button @click="showProducts = false">✕</button>
-        </div>
+    <!-- 🔥 SCANNER CÁMARA -->
+    <div v-if="showScanner" class="modal-backdrop">
+      <div class="modal scanner">
+        <div id="scanner" class="scanner-view"></div>
 
-        <input
-          v-model="filterName"
-          class="filter-input"
-          placeholder="Buscar producto por nombre..."
-        />
-
-        <div class="product-grid">
-          <div v-for="p in filteredProducts" :key="p.id" class="product-card">
-            <div class="img-container">
-              <img v-if="p.image_url" :src="p.image_url" />
-              <span v-else>Sin imagen</span>
-            </div>
-
-            <p class="name">{{ p.name }}</p>
-            <p class="price">S/ {{ p.price }}</p>
-            <p class="stock">Stock: {{ p.stock }}</p>
-
-            <button class="btn-add" @click="addToCart(p)">
-              Añadir
-            </button>
-          </div>
-        </div>
+        <button class="btn-cancel" @click="stopScanner">
+          Cancelar
+        </button>
       </div>
     </div>
 
@@ -197,7 +280,17 @@ const saveSale = async () => {
 </template>
 
 
+
+
 <style scoped>
+
+.scanner-view {
+  width: 100%;
+  height: 320px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
 .pos-layout {
   min-height: 100vh;
   background: #f4f6f8;

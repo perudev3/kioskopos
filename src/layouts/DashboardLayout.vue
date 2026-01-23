@@ -91,7 +91,7 @@ watch(() => route.name, setModuleTitle, { immediate: true });
 .module-body {
   flex: 1;
   overflow-y: auto; /* Habilita scroll solo aquí */
-  padding: 20px;
+  padding: 0px;
   background: #f3f4f6;
 }
 </style>

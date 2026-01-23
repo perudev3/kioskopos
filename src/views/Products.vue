@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, nextTick } from 'vue';
 import { supabase } from '../lib/supabase';
+import JsBarcode from 'jsbarcode'; // ✅ AGREGADO
 
 /* =========================
    FORMULARIO (NO TOCADO)
@@ -59,6 +60,27 @@ const filterName = ref('');
 const editingProduct = ref(null);
 
 /* =========================
+   UTIL BARCODE (AGREGADO)
+========================= */
+const generateBarcodeValue = () => {
+  return 'KP-' + Date.now(); // único y simple
+};
+
+const downloadBarcode = (barcode) => {
+  const canvas = document.createElement('canvas');
+  JsBarcode(canvas, barcode, {
+    format: 'CODE128',
+    width: 2,
+    height: 80,
+  });
+
+  const link = document.createElement('a');
+  link.href = canvas.toDataURL('image/png');
+  link.download = `${barcode}.png`;
+  link.click();
+};
+
+/* =========================
    CARGAR PRODUCTOS
 ========================= */
 const loadProducts = async () => {
@@ -74,6 +96,21 @@ const loadProducts = async () => {
     .order('created_at', { ascending: false });
 
   products.value = data || [];
+
+  await nextTick();
+  products.value.forEach((p) => {
+    if (p.barcode) {
+      const el = document.getElementById(`barcode-${p.id}`);
+      if (el) {
+        JsBarcode(el, p.barcode, {
+          format: 'CODE128',
+          width: 2,
+          height: 50,
+          displayValue: true,
+        });
+      }
+    }
+  });
 };
 
 /* =========================
@@ -106,6 +143,7 @@ const saveProduct = async () => {
       stock: stock.value,
       image_url,
       user_id: authUser.id,
+      barcode: generateBarcodeValue(), // ✅ AGREGADO
     });
   }
 
@@ -141,6 +179,26 @@ const filteredProducts = computed(() =>
   )
 );
 
+
+const renderBarcodes = () => {
+  setTimeout(() => {
+    products.value.forEach((p) => {
+      if (p.barcode) {
+        const el = document.getElementById(`barcode-${p.id}`);
+        if (el) {
+          JsBarcode(el, p.barcode, {
+            format: 'CODE128',
+            width: 2,
+            height: 50,
+            displayValue: true,
+          });
+        }
+      }
+    });
+  }, 0);
+};
+
+
 onMounted(loadProducts);
 </script>
 
@@ -149,7 +207,7 @@ onMounted(loadProducts);
     <div class="header">
       <h1>📦 Mis Productos</h1>
       <button class="btn-primary" @click="showModal = true">
-        ➕ Nuevo producto
+        ➕ Agregar
       </button>
     </div>
 
@@ -171,13 +229,23 @@ onMounted(loadProducts);
 
           <div class="info">
             <strong>{{ p.name }}</strong>
-            <span>S/ {{ p.price }}</span>
+            <p>Precio: S/ {{ p.price }}</p>
             <small>Stock: {{ p.stock }}</small>
           </div>
+
+          <!-- ✅ BARCODE -->
+          <svg
+            v-if="p.barcode"
+            :id="`barcode-${p.id}`"
+            style="width: 100%"
+          ></svg>
+
+          
 
           <div class="actions">
             <button class="btn-edit" @click="editProduct(p)">✏️</button>
             <button class="btn-delete" @click="deleteProduct(p)">🗑️</button>
+            <button v-if="p.barcode" class="btn-primary" @click="downloadBarcode(p.barcode)"> 🖨️ </button>
           </div>
         </div>
       </div>
@@ -201,51 +269,35 @@ onMounted(loadProducts);
   </div>
 </template>
 
+
 <style scoped>
 /* ===============================
-   KioPOS – Productos (Responsive)
+   KioPOS – Productos (Scroll Correcto)
 =============================== */
 
 .products-page {
+  height: 100vh;                 /* 🔑 pantalla completa */
+  display: flex;
+  flex-direction: column;        /* 🔑 layout vertical */
   padding: 20px;
   background: #f3f4f6;
-  min-height: 100vh;
   font-family: 'Segoe UI', sans-serif;
   color: #111827;
+  overflow: hidden;              /* 🔑 evita scroll general */
 }
 
-/* HEADER */
+/* HEADER ESTÁTICO */
 .header {
+  flex-shrink: 0;                /* 🔑 no se mueve */
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
 }
 
-.header h1 {
-  font-size: 24px;
-  font-weight: 700;
-  color: #4f46e5;
-}
-
-.btn-primary {
-  background: #4f46e5;
-  color: #fff;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s, transform 0.15s;
-}
-
-.btn-primary:hover {
-  background: #4338ca;
-  transform: translateY(-1px);
-}
-
-/* FILTRO */
+/* FILTRO ESTÁTICO */
 .filter-section {
+  flex-shrink: 0;                /* 🔑 no se mueve */
   margin-bottom: 16px;
 }
 
@@ -259,19 +311,14 @@ onMounted(loadProducts);
   outline: none;
 }
 
-.filter-section input:focus {
-  border-color: #4f46e5;
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
-}
-
-/* CONTENEDOR CON SCROLL */
+/* 🔥 ÚNICO ELEMENTO CON SCROLL */
 .product-list-container {
-  max-height: 65vh;
-  overflow-y: auto;
+  flex: 1;                       /* 🔑 ocupa el resto */
+  overflow-y: auto;              /* 🔑 SOLO AQUÍ SCROLL */
   padding-right: 6px;
 }
 
-/* GRID RESPONSIVE */
+/* GRID */
 .product-list {
   display: grid;
   gap: 16px;
@@ -287,12 +334,6 @@ onMounted(loadProducts);
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.product-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.15);
 }
 
 /* IMAGEN */
@@ -313,21 +354,10 @@ onMounted(loadProducts);
   object-fit: cover;
 }
 
-.placeholder {
-  font-size: 13px;
-  color: #6b7280;
-}
-
 /* INFO */
 .info strong {
   font-size: 16px;
   color: #111827;
-}
-
-.info span {
-  font-size: 14px;
-  color: #4f46e5;
-  font-weight: 600;
 }
 
 .info small {
@@ -342,36 +372,6 @@ onMounted(loadProducts);
   margin-top: auto;
 }
 
-.btn-edit,
-.btn-delete {
-  flex: 1;
-  border: none;
-  padding: 8px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-.btn-edit {
-  background: #e0e7ff;
-  color: #3730a3;
-}
-
-.btn-edit:hover {
-  background: #c7d2fe;
-}
-
-.btn-delete {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.btn-delete:hover {
-  background: #fecaca;
-}
-
 /* MODAL */
 .modal-backdrop {
   position: fixed;
@@ -383,45 +383,6 @@ onMounted(loadProducts);
   z-index: 50;
 }
 
-.modal {
-  background: #ffffff;
-  padding: 20px;
-  width: 90%;
-  max-width: 420px;
-  border-radius: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.modal h2 {
-  color: #4f46e5;
-}
-
-.modal input {
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid #d1d5db;
-}
-
-.modal input:focus {
-  border-color: #4f46e5;
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
-}
-
-.preview-img {
-  width: 100%;
-  border-radius: 10px;
-}
-
-.btn-cancel {
-  background: #9ca3af;
-  color: white;
-  border: none;
-  padding: 10px;
-  border-radius: 8px;
-}
-
 /* SIN PRODUCTOS */
 .no-products {
   text-align: center;
@@ -431,13 +392,10 @@ onMounted(loadProducts);
 
 /* RESPONSIVE */
 @media (max-width: 480px) {
-  .header h1 {
-    font-size: 20px;
-  }
-
   .product-list {
     grid-template-columns: 1fr;
   }
 }
+
 
 </style>

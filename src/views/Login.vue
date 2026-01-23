@@ -3,7 +3,7 @@
     <div class="login-card">
       <!-- Logo arriba -->
       <div class="logo">
-        <img src="/logo.png" alt="KioPOS Logo" />
+        <img src="/logo-sin-fondo.png" alt="KioPOS Logo" />
       </div>
 
       <form @submit.prevent="login" class="login-form">

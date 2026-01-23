@@ -67,7 +67,7 @@ onMounted(() => {
     <!-- HEADER (logo alineado al toggle) -->
     <div class="sidebar-header">
       <div class="brand-logo">
-        <img src="/logo.png" alt="KioPOS Logo" />
+        <img src="/logo-sin-fondo.png" alt="KioPOS Logo" />
       </div>
     </div>
 
