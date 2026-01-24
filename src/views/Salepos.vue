@@ -15,6 +15,7 @@ const user = ref(null)
 const loading = ref(false)
 
 
+
 const updateQuantity = (id, newQty) => {
   const item = cart.value.find(p => p.id === id)
   if (!item) return
@@ -250,9 +251,10 @@ const saveSale = async () => {
       <Cart
         :cart="cart"
         :total="total"
+        :loading="loading"
         @remove="removeFromCart"
         @update-quantity="updateQuantity"
-        @pay="pay"
+        @pay="showPayment = true"
       />
 
     </div>

@@ -2,6 +2,7 @@
 defineProps({
   cart: Array,
   total: Number,
+  loading: Boolean
 })
 defineEmits(['remove', 'pay', 'update-quantity'])
 </script>
@@ -46,9 +47,15 @@ defineEmits(['remove', 'pay', 'update-quantity'])
     <hr />
     <strong>Total: S/ {{ total.toFixed(2) }}</strong>
 
-    <button class="pay" :disabled="cart.length === 0" @click="$emit('pay')">
-      COBRAR
+    <button
+      class="pay"
+      :disabled="cart.length === 0 || loading"
+      @click="$emit('pay')"
+    >
+      <span v-if="loading">Guardando cobro...</span>
+      <span v-else>COBRAR</span>
     </button>
+
   </div>
 </template>
 
