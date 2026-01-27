@@ -73,7 +73,7 @@ onMounted(() => {
 
     <nav class="nav-items">
      <button v-if="role !== 'admin'" @click="go('/')" class="btn">
-  Dashboard
+  Inicio
 </button>
 
 <button v-if="role !== 'admin'" @click="go('/sales')" class="btn">
