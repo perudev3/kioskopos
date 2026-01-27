@@ -4,35 +4,45 @@
 
     <!-- Tarjetas estadísticas -->
     <div class="dashboard-grid">
-  <StatCard
-    title="Ganancia total (S/)"
-    :value="totalProfit"
-    color="success"
-  />
+      <StatCard
+        title="Resultado financiero (S/)"
+        :value="totalProfit"
+        color="success"
+      />
 
-  <StatCard
-    title="Total egresos (S/)"
-    :value="totalExpenses"
-    color="danger"
-  />
+      <StatCard
+        title="Total egresos registrados (S/)"
+        :value="totalExpenses"
+        color="danger"
+      />
 
-  <StatCard
-    title="Ventas hoy (S/)"
-    :value="salesToday"
-  />
+      <StatCard
+        title="Ventas hoy (S/)"
+        :value="salesToday"
+      />
 
-  <StatCard
-    title="Ganancia hoy (S/)"
-    :value="profitToday"
-    color="success"
-  />
+      <StatCard
+        title="Resultado hoy (S/)"
+        :value="profitToday"
+        color="success"
+      />
 
-  <StatCard
-    title="Productos bajos en stock"
-    :value="lowStockProducts.length"
-  />
-</div>
+      <StatCard
+        title="Ganancia real acumulada (S/)"
+        :value="realTotalProfit.toFixed(2)"
+        color="success"
+      />
 
+      <StatCard
+        title="Productos bajos en stock"
+        :value="lowStockProducts.length"
+      />
+    </div>
+
+    <p style="font-size:13px;color:#6b7280;margin-bottom:16px">
+      ℹ️ El resultado financiero considera solo ventas y egresos operativos.
+      El capital invertido no se considera pérdida.
+    </p>
 
     <!-- Gráficos -->
     <div class="charts-grid">
@@ -102,7 +112,6 @@
   </div>
 </template>
 
-
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
 import StatCard from '../components/StatCard.vue';
@@ -111,18 +120,28 @@ import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
 
-// Estados
-const salesToday = ref(0);
-const profitToday = ref(0);
-const totalProfit = ref(0);
-const totalExpenses = ref(0);
+/* =========================
+   HELPERS
+========================= */
+const normalizeProfit = (value) => (value < 0 ? 0 : value);
+
+/* =========================
+   ESTADOS
+========================= */
+const salesToday = ref('0.00');
+const profitToday = ref('0.00');
+const totalProfit = ref('0.00');
+const totalExpenses = ref('0.00');
+const realProfitTotal = ref(0);
 
 const recentSales = ref([]);
 const lowStockProducts = ref([]);
 const salesLast7Days = ref([]);
 const profitLast7Days = ref([]);
 
-// Paginación
+/* =========================
+   PAGINACIÓN
+========================= */
 const currentPage = ref(1);
 const perPage = 5;
 
@@ -139,79 +158,105 @@ watch(recentSales, () => {
   currentPage.value = 1;
 });
 
+/* =========================
+   DASHBOARD
+========================= */
 const loadDashboard = async () => {
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
 
-    if (!user) return;
+  const today = new Date().toISOString().split('T')[0];
 
-    const today = new Date().toISOString().split('T')[0];
+  const { data: sales = [] } = await supabase
+    .from('sales')
+    .select('*')
+    .eq('user_id', user.id);
 
-    const { data: sales } = await supabase
-      .from('sales')
-      .select('*')
-      .eq('user_id', user.id);
+  const { data: egresos = [] } = await supabase
+    .from('egresos')
+    .select('*')
+    .eq('user_id', user.id);
 
-    const { data: egresos } = await supabase
-      .from('egresos')
-      .select('*')
-      .eq('user_id', user.id);
+  /* =========================
+     EGRESOS REALES (SIN CAPITAL)
+  ========================= */
+  const realExpenses = egresos.filter(e => e.tipo === 'egreso');
 
-    // Ventas hoy
-    const todaySales = sales.filter(s => s.created_at.startsWith(today));
-    const salesSumToday = todaySales.reduce((a, b) => a + b.total, 0);
+  /* =========================
+     HOY
+  ========================= */
+  const todaySales = sales.filter(s => s.created_at.startsWith(today));
+  const todayExpenses = realExpenses.filter(e => e.created_at.startsWith(today));
 
-    // Egresos hoy
-    const todayExpenses = egresos.filter(e => e.created_at.startsWith(today));
-    const expensesSumToday = todayExpenses.reduce((a, b) => a + b.monto, 0);
+  const salesSumToday = todaySales.reduce((a, b) => a + Number(b.total), 0);
+  const expensesSumToday = todayExpenses.reduce((a, b) => a + Number(b.monto), 0);
 
-    salesToday.value = salesSumToday.toFixed(2);
-    profitToday.value = (salesSumToday - expensesSumToday).toFixed(2);
+  salesToday.value = salesSumToday.toFixed(2);
+  profitToday.value = normalizeProfit(
+    salesSumToday - expensesSumToday
+  ).toFixed(2);
 
-    // Totales
-    const totalSales = sales.reduce((a, b) => a + b.total, 0);
-    const totalEgresos = egresos.reduce((a, b) => a + b.monto, 0);
+  /* =========================
+     TOTALES
+  ========================= */
+  const totalSales = sales.reduce((a, b) => a + Number(b.total), 0);
+  const totalRealExpenses = realExpenses.reduce((a, b) => a + Number(b.monto), 0);
 
-    totalExpenses.value = totalEgresos.toFixed(2);
-    totalProfit.value = (totalSales - totalEgresos).toFixed(2);
+  totalExpenses.value = totalRealExpenses.toFixed(2);
+  totalProfit.value = normalizeProfit(
+    totalSales - totalRealExpenses
+  ).toFixed(2);
 
-    // Últimas ventas
-    recentSales.value = sales.slice(0, 10).map(s => ({
-      id: s.id,
-      customer: s.user_id,
-      total: s.total.toFixed(2),
-      date: new Date(s.created_at).toISOString().split('T')[0],
-    }));
+  /* =========================
+     GANANCIA REAL (SOLO UTILIDAD)
+  ========================= */
+  realProfitTotal.value = sales.reduce((sum, s) => {
+    const base = Number(s.base_price || 0);
+    const total = Number(s.total || 0);
+    const profit = total - base;
+    return sum + (profit > 0 ? profit : 0);
+  }, 0);
 
-    const { data: products } = await supabase.from('products').select('*');
-    lowStockProducts.value = products.filter(p => p.stock <= 5);
+  /* =========================
+     ÚLTIMAS VENTAS
+  ========================= */
+  recentSales.value = sales.slice(0, 10).map(s => ({
+    id: s.id,
+    customer: s.user_id,
+    total: Number(s.total).toFixed(2),
+    date: new Date(s.created_at).toISOString().split('T')[0],
+  }));
 
-    salesLast7Days.value = [];
-    profitLast7Days.value = [];
+  const { data: products = [] } = await supabase.from('products').select('*');
+  lowStockProducts.value = products.filter(p => p.stock <= 5);
 
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const day = d.toISOString().split('T')[0];
+  /* =========================
+     GRÁFICOS
+  ========================= */
+  salesLast7Days.value = [];
+  profitLast7Days.value = [];
 
-      const daySales = sales.filter(s => s.created_at.startsWith(day));
-      const dayExpenses = egresos.filter(e => e.created_at.startsWith(day));
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const day = d.toISOString().split('T')[0];
 
-      const sTotal = daySales.reduce((a, b) => a + b.total, 0);
-      const eTotal = dayExpenses.reduce((a, b) => a + b.monto, 0);
+    const daySales = sales.filter(s => s.created_at.startsWith(day));
+    const dayExpenses = realExpenses.filter(e => e.created_at.startsWith(day));
 
-      salesLast7Days.value.push(sTotal);
-      profitLast7Days.value.push(sTotal - eTotal);
-    }
+    const sTotal = daySales.reduce((a, b) => a + Number(b.total), 0);
+    const eTotal = dayExpenses.reduce((a, b) => a + Number(b.monto), 0);
 
-    initCharts();
-  } catch (err) {
-    console.error('Error cargando dashboard:', err);
+    salesLast7Days.value.push(sTotal);
+    profitLast7Days.value.push(normalizeProfit(sTotal - eTotal));
   }
+
+  initCharts();
 };
 
+/* =========================
+   CHARTS
+========================= */
 const initCharts = () => {
   new Chart(document.getElementById('salesChart'), {
     type: 'line',
@@ -247,6 +292,11 @@ const initCharts = () => {
     },
   });
 };
+
+/* =========================
+   COMPUTED
+========================= */
+const realTotalProfit = computed(() => realProfitTotal.value);
 
 onMounted(loadDashboard);
 </script>

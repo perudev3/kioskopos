@@ -1,13 +1,14 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue';
 import { supabase } from '../lib/supabase';
-import JsBarcode from 'jsbarcode'; // ✅ AGREGADO
+import JsBarcode from 'jsbarcode';
 
 /* =========================
-   FORMULARIO (NO TOCADO)
+   FORMULARIO
 ========================= */
 const name = ref('');
-const price = ref('');
+const price = ref('');        // 👉 PRECIO BASE
+const sale_price = ref('');   // 👉 PRECIO VENTA (AGREGADO)
 const stock = ref('');
 const file = ref(null);
 
@@ -60,10 +61,10 @@ const filterName = ref('');
 const editingProduct = ref(null);
 
 /* =========================
-   UTIL BARCODE (AGREGADO)
+   BARCODE
 ========================= */
 const generateBarcodeValue = () => {
-  return 'KP-' + Date.now(); // único y simple
+  return 'KP-' + Date.now();
 };
 
 const downloadBarcode = (barcode) => {
@@ -131,7 +132,8 @@ const saveProduct = async () => {
       .from('products')
       .update({
         name: name.value,
-        price: price.value,
+        price: price.value,             // precio base
+        sale_price: sale_price.value,   // precio venta
         stock: stock.value,
         image_url,
       })
@@ -139,16 +141,18 @@ const saveProduct = async () => {
   } else {
     await supabase.from('products').insert({
       name: name.value,
-      price: price.value,
+      price: price.value,               // precio base
+      sale_price: sale_price.value,     // precio venta
       stock: stock.value,
       image_url,
       user_id: authUser.id,
-      barcode: generateBarcodeValue(), // ✅ AGREGADO
+      barcode: generateBarcodeValue(),
     });
   }
 
   name.value = '';
   price.value = '';
+  sale_price.value = '';
   stock.value = '';
   imageFile.value = null;
   file.value = null;
@@ -162,6 +166,7 @@ const editProduct = (product) => {
   editingProduct.value = product;
   name.value = product.name;
   price.value = product.price;
+  sale_price.value = product.sale_price;
   stock.value = product.stock;
   imageFile.value = null;
   showModal.value = true;
@@ -179,25 +184,13 @@ const filteredProducts = computed(() =>
   )
 );
 
-
-const renderBarcodes = () => {
-  setTimeout(() => {
-    products.value.forEach((p) => {
-      if (p.barcode) {
-        const el = document.getElementById(`barcode-${p.id}`);
-        if (el) {
-          JsBarcode(el, p.barcode, {
-            format: 'CODE128',
-            width: 2,
-            height: 50,
-            displayValue: true,
-          });
-        }
-      }
-    });
-  }, 0);
+/* =========================
+   GANANCIA
+========================= */
+const getProfit = (p) => {
+  if (!p.sale_price || !p.price) return 0;
+  return Number(p.sale_price) - Number(p.price);
 };
-
 
 onMounted(loadProducts);
 </script>
@@ -229,23 +222,24 @@ onMounted(loadProducts);
 
           <div class="info">
             <strong>{{ p.name }}</strong>
-            <p>Precio: S/ {{ p.price }}</p>
+            <p>Base: S/ {{ p.price }}</p>
+            <p>Venta: S/ {{ p.sale_price }}</p>
+            <p><strong>Ganancia: S/ {{ getProfit(p) }}</strong></p>
             <small>Stock: {{ p.stock }}</small>
           </div>
 
-          <!-- ✅ BARCODE -->
           <svg
             v-if="p.barcode"
             :id="`barcode-${p.id}`"
             style="width: 100%"
           ></svg>
 
-          
-
           <div class="actions">
             <button class="btn-edit" @click="editProduct(p)">✏️</button>
             <button class="btn-delete" @click="deleteProduct(p)">🗑️</button>
-            <button v-if="p.barcode" class="btn-primary" @click="downloadBarcode(p.barcode)"> 🖨️ </button>
+            <button v-if="p.barcode" class="btn-primary" @click="downloadBarcode(p.barcode)">
+              🖨️
+            </button>
           </div>
         </div>
       </div>
@@ -256,7 +250,8 @@ onMounted(loadProducts);
         <h2>{{ editingProduct ? 'Editar producto' : 'Registrar producto' }}</h2>
 
         <input v-model="name" type="text" placeholder="Nombre" />
-        <input v-model="price" type="number" placeholder="Precio" />
+        <input v-model="price" type="number" placeholder="Precio base" />
+        <input v-model="sale_price" type="number" placeholder="Precio venta" />
         <input v-model="stock" type="number" placeholder="Stock" />
         <input type="file" accept="image/*" @change="onFileChange" />
 
@@ -268,6 +263,7 @@ onMounted(loadProducts);
     </div>
   </div>
 </template>
+
 
 
 <style scoped>

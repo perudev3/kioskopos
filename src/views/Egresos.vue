@@ -62,14 +62,6 @@ const totalVentas = computed(() =>
   ventas.value.reduce((sum, v) => sum + Number(v.total || 0), 0)
 )
 
-const totalEgresos = computed(() =>
-  egresos.value.reduce((sum, e) => sum + Number(e.monto || 0), 0)
-)
-
-const capitalDisponible = computed(() =>
-  totalVentas.value - totalEgresos.value
-)
-
 /* =========================
    REGISTRAR EGRESO
 ========================= */
@@ -109,6 +101,71 @@ const saveEgreso = async () => {
 
   loadData()
 }
+
+
+/* =========================
+   CAPITAL
+========================= */
+const capitalMonto = ref('')
+
+const totalCapital = computed(() =>
+  egresos.value
+    .filter(e => e.tipo === 'capital')
+    .reduce((sum, e) => sum + Number(e.monto || 0), 0)
+)
+
+/* =========================
+   AJUSTE DE CÁLCULOS
+========================= */
+const totalEgresos = computed(() =>
+  egresos.value
+    .filter(e => e.tipo === 'egreso')
+    .reduce((sum, e) => sum + Number(e.monto || 0), 0)
+)
+
+const capitalDisponible = computed(() =>
+  totalCapital.value + totalVentas.value - totalEgresos.value
+)
+
+/* =========================
+   REGISTRAR CAPITAL
+========================= */
+const saveCapital = async () => {
+  if (!capitalMonto.value) {
+    alert('Ingresa un monto de capital')
+    return
+  }
+
+  const montoNum = Number(capitalMonto.value)
+  if (montoNum <= 0) {
+    alert('El capital debe ser mayor a cero')
+    return
+  }
+
+  const { error } = await supabase.from('egresos').insert({
+    user_id: user.value.id,
+    descripcion: 'Capital inicial / inversión',
+    monto: montoNum,
+    categoria: 'Capital',
+    tipo: 'capital'
+  })
+
+  if (error) {
+    alert('Error al registrar capital')
+    return
+  }
+
+  capitalMonto.value = ''
+  loadData()
+}
+
+
+/* =========================
+   MODALES
+========================= */
+const showEgresoModal = ref(false)
+const showCapitalModal = ref(false)
+
 </script>
 
 <template>
@@ -133,26 +190,74 @@ const saveEgreso = async () => {
       </div>
     </div>
 
-    <!-- FORMULARIO -->
+    <!-- ACCIONES -->
     <div class="card">
-      <input
-        v-model="descripcion"
-        placeholder="Descripción del gasto"
-      />
-      <input
-        v-model="monto"
-        type="number"
-        min="0"
-        step="0.01"
-        placeholder="Monto"
-      />
-      <input
-        v-model="categoria"
-        placeholder="Categoría (opcional)"
-      />
-      <button @click="saveEgreso">
-        ➖ Registrar egreso
+      <button @click="showCapitalModal = true">
+        ➕ Agregar capital
       </button>
+
+      <button @click="showEgresoModal = true">
+        ➖ Agregar egreso
+      </button>
+    </div>
+
+
+    <!-- MODAL CAPITAL -->
+    <div v-if="showCapitalModal" class="modal-backdrop">
+      <div class="modal">
+        <h3>➕ Registrar capital</h3>
+
+        <input
+          v-model="capitalMonto"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Capital a ingresar"
+        />
+
+        <div class="modal-actions">
+          <button @click="saveCapital(); showCapitalModal = false">
+            Guardar
+          </button>
+          <button class="cancel" @click="showCapitalModal = false">
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- FORMULARIO -->
+   <!-- MODAL EGRESO -->
+    <div v-if="showEgresoModal" class="modal-backdrop">
+      <div class="modal">
+        <h3>➖ Registrar egreso</h3>
+
+        <input
+          v-model="descripcion"
+          placeholder="Descripción del gasto"
+        />
+        <input
+          v-model="monto"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="Monto"
+        />
+        <input
+          v-model="categoria"
+          placeholder="Categoría (opcional)"
+        />
+
+        <div class="modal-actions">
+          <button @click="saveEgreso(); showEgresoModal = false">
+            Guardar
+          </button>
+          <button class="cancel" @click="showEgresoModal = false">
+            Cancelar
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- LISTA -->
@@ -287,4 +392,49 @@ h1 {
   padding: 30px;
   color: #6b7280;
 }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal {
+  background: #ffffff;
+  padding: 20px;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.modal h3 {
+  margin-bottom: 12px;
+  font-weight: 700;
+  color: #4f46e5;
+}
+
+.modal input {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.modal-actions .cancel {
+  background: #e5e7eb;
+  color: #111827;
+}
+
 </style>

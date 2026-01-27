@@ -47,6 +47,52 @@ const totalSales = computed(() => sales.value.length);
 const totalAmount = computed(() =>
   sales.value.reduce((sum, s) => sum + Number(s.total), 0)
 );
+
+/* =========================
+   GANANCIA NETA
+========================= */
+const totalNetProfit = computed(() =>
+  sales.value.reduce((sum, s) => sum + Number(s.net_profit || 0), 0)
+);
+
+
+/* =========================
+   PASAR GANANCIA A CAPITAL
+========================= */
+const showProfitModal = ref(false)
+const profitToCapital = ref('')
+
+const transferProfitToCapital = async () => {
+  const montoNum = Number(profitToCapital.value)
+
+  if (!montoNum || montoNum <= 0) {
+    alert('Ingresa un monto válido')
+    return
+  }
+
+  if (montoNum > totalNetProfit.value) {
+    alert('No puedes transferir más que tu ganancia')
+    return
+  }
+
+  const { error } = await supabase.from('egresos').insert({
+    user_id: user.value.id,
+    descripcion: 'Reinversión de ganancia',
+    monto: montoNum,
+    categoria: 'Capital',
+    tipo: 'capital',
+    origen: 'ganancia'
+  })
+
+  if (error) {
+    alert('Error al pasar ganancia a capital')
+    return
+  }
+
+  profitToCapital.value = ''
+  showProfitModal.value = false
+}
+
 </script>
 
 <template>
@@ -64,7 +110,17 @@ const totalAmount = computed(() =>
     <div class="summary">
       <div>Ventas: <strong>{{ totalSales }}</strong></div>
       <div>Total: <strong>S/ {{ totalAmount.toFixed(2) }}</strong></div>
+      <div>Ganancia neta: <strong>S/ {{ totalNetProfit.toFixed(2) }}</strong></div>
+
+      <button
+        style="margin-left: 8px"
+        @click="showProfitModal = true"
+      >
+        ↪ Pasar a capital
+      </button>
+
     </div>
+
 
     <!-- TABLA CON SCROLL -->
     <div class="table-scroll">
@@ -82,6 +138,39 @@ const totalAmount = computed(() =>
       @close="selectedSale = null"
     />
   </div>
+
+  <!-- MODAL PASAR GANANCIA A CAPITAL -->
+  <div v-if="showProfitModal" class="modal-backdrop">
+    <div class="modal">
+      <h2>💰 Pasar ganancia a capital</h2>
+
+      <p style="text-align:center;margin-bottom:10px">
+        Ganancia disponible: <strong>S/ {{ totalNetProfit.toFixed(2) }}</strong>
+      </p>
+
+      <input
+        v-model="profitToCapital"
+        type="number"
+        min="0"
+        step="0.01"
+        placeholder="Monto a reinvertir"
+        style="width:100%;padding:10px;border-radius:8px;border:1px solid #cbd5e1"
+      />
+
+      <button class="close-btn" @click="transferProfitToCapital">
+        Confirmar
+      </button>
+
+      <button
+        class="close-btn"
+        style="background:#64748b;margin-top:8px"
+        @click="showProfitModal = false"
+      >
+        Cancelar
+      </button>
+    </div>
+  </div>
+
 </template>
 
 <style scoped>

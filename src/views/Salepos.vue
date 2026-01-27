@@ -40,7 +40,7 @@ let scanning = false
 const startScanner = async () => {
   showScanner.value = true
 
-  await nextTick() // 🔑 ESPERA A QUE #scanner EXISTA
+  await nextTick()
 
   const target = document.querySelector('#scanner')
   if (!target) {
@@ -170,17 +170,17 @@ const decreaseQty = (id) => {
 }
 
 /* =========================
-   TOTAL
+   TOTAL (USA PRECIO VENTA)
 ========================= */
 const total = computed(() =>
   cart.value.reduce(
-    (sum, p) => sum + p.price * p.quantity,
+    (sum, p) => sum + p.sale_price * p.quantity,
     0
   )
 )
 
 /* =========================
-   GUARDAR VENTA (SIN CAMBIOS)
+   GUARDAR VENTA
 ========================= */
 const saveSale = async () => {
   if (!cart.value.length) {
@@ -204,8 +204,8 @@ const saveSale = async () => {
       sale_id: sale.id,
       product_id: p.id,
       quantity: p.quantity,
-      price: p.price,
-      subtotal: p.price * p.quantity
+      price: p.sale_price,
+      subtotal: p.sale_price * p.quantity
     }))
 
     await supabase.from('sale_items').insert(items)
@@ -229,8 +229,6 @@ const saveSale = async () => {
   }
 }
 </script>
-
-
 
 <template>
   <div class="pos-layout">
