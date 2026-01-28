@@ -24,13 +24,20 @@ const canConfirm = computed(() => {
   return !props.loading;
 });
 
-// Sincronizar si la prop cambia desde afuera
-watch(
-  () => props.method,
-  (val) => {
-    localMethod.value = val;
-  }
-);
+// 🔹 Sincronizar si la prop cambia desde afuera
+watch(() => props.method, val => {
+  localMethod.value = val;
+});
+
+// 🔹 Emitir confirm solo si puede
+const handleConfirm = () => {
+  if (!canConfirm.value) return;
+  emit('confirm', {
+    customer_name: customerName.value.trim(),
+    customer_phone: customerPhone.value.trim() || null,
+    comment: customerComment.value.trim() || null
+  });
+};
 </script>
 
 <template>
@@ -39,10 +46,7 @@ watch(
       <h3 style="color: black;">Total a pagar</h3>
       <h2>S/ {{ total.toFixed(2) }}</h2>
 
-      <select
-        v-model="localMethod"
-        @change="emit('update:method', localMethod)"
-      >
+      <select v-model="localMethod" @change="emit('update:method', localMethod)">
         <option value="cash">Efectivo</option>
         <option value="card">Tarjeta</option>
         <option value="yape">Yape</option>
@@ -52,32 +56,16 @@ watch(
 
       <!-- FORMULARIO SOLO SI ES POR COBRAR -->
       <div v-if="localMethod === 'por_cobrar'" class="credit-form">
-        <input
-          type="text"
-          placeholder="Nombre del cliente *"
-          v-model="customerName"
-        />
-        <input
-          type="tel"
-          placeholder="Teléfono (opcional)"
-          v-model="customerPhone"
-        />
-        <textarea
-          rows="2"
-          placeholder="Comentario (opcional)"
-          v-model="customerComment"
-        ></textarea>
+        <input type="text" placeholder="Nombre del cliente *" v-model="customerName" />
+        <input type="tel" placeholder="Teléfono (opcional)" v-model="customerPhone" />
+        <textarea rows="2" placeholder="Comentario (opcional)" v-model="customerComment"></textarea>
       </div>
 
       <div class="buttons">
         <button
           :disabled="!canConfirm"
           class="confirm"
-          @click="emit('confirm', {
-            customer_name: customerName.value.trim(),
-            customer_phone: customerPhone.value.trim() || null,
-            comment: customerComment.value.trim() || null
-          })"
+          @click="handleConfirm"
         >
           Confirmar
         </button>
