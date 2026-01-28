@@ -88,10 +88,24 @@ const addToCart = (product) => {
   if (item) {
     if (item.quantity < product.stock) item.quantity++
   } else {
-    cart.value.push({ ...product, quantity: 1 })
+    // ⚡ Aquí está el cambio: usamos sale_price como price
+    cart.value.push({ 
+      ...product, 
+      quantity: 1, 
+      price: product.sale_price // <-- precio de venta
+    })
   }
-  Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `${product.name} añadido`, showConfirmButton: false, timer: 900 })
+
+  Swal.fire({
+    toast: true,
+    position: 'top-end',
+    icon: 'success',
+    title: `${product.name} añadido`,
+    showConfirmButton: false,
+    timer: 900
+  })
 }
+
 
 const removeFromCart = (id) => { cart.value = cart.value.filter(p => p.id !== id) }
 const increaseQty = (id) => { const item = cart.value.find(p => p.id === id); if (item && item.quantity < item.stock) item.quantity++ }
