@@ -190,7 +190,8 @@ const saveSale = async (creditCustomer = null) => {
   loading.value = true
 
   try {
-    const { data: sale } = await supabase
+    // Guardar venta
+    const { data: sale, error: saleError } = await supabase
       .from('sales')
       .insert({
         user_id: user.value.id,
@@ -200,30 +201,24 @@ const saveSale = async (creditCustomer = null) => {
       .select()
       .single()
 
-    if (paymentMethod.value === 'por_cobrar' && creditCustomer) {
-        const { error } = await supabase
-          .from('clientes_por_cobrar')
-          .insert({
-            user_id: user.value.id,
-            sale_id: sale.id,
-            customer_name: creditCustomer.customer_name,
-            customer_phone: creditCustomer.customer_phone,
-            comment: creditCustomer.comment
-          })
+    if (saleError) throw saleError
 
-        if (error) {
-          console.error('ERROR clientes_por_cobrar:', error)
-          Swal.fire(
-            'Error crédito',
-            error.message,
-            'error'
-          )
-          throw error
-        }
+    // Guardar cliente por cobrar, SIN total
+    if (paymentMethod.value === 'por_cobrar' && creditCustomer) {
+      const { error: creditError } = await supabase
+        .from('clientes_por_cobrar')
+        .insert({
+          user_id: user.value.id,
+          sale_id: sale.id,
+          customer_name: creditCustomer.customer_name,
+          customer_phone: creditCustomer.customer_phone,
+          comment: creditCustomer.comment
+        })
+
+      if (creditError) throw creditError
     }
 
-
-
+    // Guardar items de la venta
     const items = cart.value.map(p => ({
       sale_id: sale.id,
       product_id: p.id,
@@ -232,38 +227,41 @@ const saveSale = async (creditCustomer = null) => {
       subtotal: p.sale_price * p.quantity
     }))
 
-    await supabase.from('sale_items').insert(items)
+    const { error: itemsError } = await supabase.from('sale_items').insert(items)
+    if (itemsError) throw itemsError
 
+    // Actualizar stock
     for (const p of cart.value) {
-      await supabase
+      const { error: stockError } = await supabase
         .from('products')
         .update({ stock: p.stock - p.quantity })
         .eq('id', p.id)
+      if (stockError) throw stockError
     }
 
+    // Limpiar carrito y recargar productos
     cart.value = []
     showPayment.value = false
-    loadProducts()
+    await loadProducts()
 
     Swal.fire('Venta registrada', '', 'success')
   } catch (err) {
-  console.error('ERROR GENERAL:', err)
-
-  Swal.fire({
-    icon: 'error',
-    title: 'Error al guardar',
-    html: `
-      <p style="text-align:left;font-size:14px">
-        <b>Mensaje:</b><br>
-        ${err?.message || 'Error desconocido'}
-      </p>
-    `
-  })
-}
- finally {
+    console.error('ERROR GENERAL:', err)
+    Swal.fire({
+      icon: 'error',
+      title: 'Error al guardar',
+      html: `
+        <p style="text-align:left;font-size:14px">
+          <b>Mensaje:</b><br>
+          ${err?.message || 'Error desconocido'}
+        </p>
+      `
+    })
+  } finally {
     loading.value = false
   }
 }
+
 </script>
 
 <template>
