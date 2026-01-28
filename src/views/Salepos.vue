@@ -203,20 +203,24 @@ const saveSale = async (creditCustomer = null) => {
 
     if (saleError) throw saleError
 
-    // Guardar cliente por cobrar, SIN total
     if (paymentMethod.value === 'por_cobrar' && creditCustomer) {
-      const { error: creditError } = await supabase
-        .from('clientes_por_cobrar')
-        .insert({
-          user_id: user.value.id,
-          sale_id: sale.id,
-          customer_name: creditCustomer.customer_name,
-          customer_phone: creditCustomer.customer_phone,
-          comment: creditCustomer.comment
-        })
+        // Construir objeto solo con columnas válidas
+        const clienteData = {}
+        const tableInfo = ['user_id', 'sale_id', 'customer_name', 'customer_phone', 'comment'] // tus columnas esperadas
 
-      if (creditError) throw creditError
-    }
+        if (tableInfo.includes('user_id')) clienteData.user_id = user.value.id
+        if (tableInfo.includes('sale_id')) clienteData.sale_id = sale.id
+        if (tableInfo.includes('customer_name')) clienteData.customer_name = creditCustomer.customer_name
+        if (tableInfo.includes('customer_phone')) clienteData.customer_phone = creditCustomer.customer_phone
+        if (tableInfo.includes('comment')) clienteData.comment = creditCustomer.comment
+
+        const { error: creditError } = await supabase
+          .from('clientes_por_cobrar')
+          .insert(clienteData)
+
+        if (creditError) throw creditError
+      }
+
 
     // Guardar items de la venta
     const items = cart.value.map(p => ({
