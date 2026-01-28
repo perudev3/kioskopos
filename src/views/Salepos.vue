@@ -200,7 +200,6 @@ const saveSale = async (creditCustomer = null) => {
       .select()
       .single()
 
-        // 🔥 GUARDAR CLIENTE POR COBRAR (AGREGADO)
     if (paymentMethod.value === 'por_cobrar' && creditCustomer) {
       await supabase
         .from('clientes_por_cobrar')
