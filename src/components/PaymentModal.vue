@@ -11,12 +11,12 @@ const emit = defineEmits(['update:method', 'confirm', 'close']);
 // Ref local para poder usar v-model
 const localMethod = ref(props.method);
 
-// 🔹 DATOS CLIENTE (AGREGADO)
+// 🔹 DATOS CLIENTE
 const customerName = ref('');
 const customerPhone = ref('');
 const customerComment = ref('');
 
-// 🔹 Validación simple (AGREGADO)
+// 🔹 Validación simple
 const canConfirm = computed(() => {
   if (localMethod.value === 'por_cobrar') {
     return customerName.value.trim().length > 0 && !props.loading;
@@ -50,7 +50,7 @@ watch(
         <option value="por_cobrar">Por cobrar</option>
       </select>
 
-      <!-- 🔥 FORMULARIO SOLO SI ES POR COBRAR (AGREGADO) -->
+      <!-- FORMULARIO SOLO SI ES POR COBRAR -->
       <div v-if="localMethod === 'por_cobrar'" class="credit-form">
         <input
           type="text"
@@ -74,9 +74,9 @@ watch(
           :disabled="!canConfirm"
           class="confirm"
           @click="emit('confirm', {
-            customer_name: customerName.value,
-            customer_phone: customerPhone.value,
-            comment: customerComment.value
+            customer_name: customerName.value.trim(),
+            customer_phone: customerPhone.value.trim() || null,
+            comment: customerComment.value.trim() || null
           })"
         >
           Confirmar
