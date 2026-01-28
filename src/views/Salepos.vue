@@ -247,9 +247,21 @@ const saveSale = async (creditCustomer = null) => {
     loadProducts()
 
     Swal.fire('Venta registrada', '', 'success')
-  } catch {
-    Swal.fire('Error', 'No se pudo guardar la venta', 'error')
-  } finally {
+  } catch (err) {
+  console.error('ERROR GENERAL:', err)
+
+  Swal.fire({
+    icon: 'error',
+    title: 'Error al guardar',
+    html: `
+      <p style="text-align:left;font-size:14px">
+        <b>Mensaje:</b><br>
+        ${err?.message || 'Error desconocido'}
+      </p>
+    `
+  })
+}
+ finally {
     loading.value = false
   }
 }
