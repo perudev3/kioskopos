@@ -74,9 +74,9 @@ watch(
           :disabled="!canConfirm"
           class="confirm"
           @click="emit('confirm', {
-            customer_name: customerName,
-            customer_phone: customerPhone,
-            comment: customerComment
+            customer_name: customerName.value,
+            customer_phone: customerPhone.value,
+            comment: customerComment.value
           })"
         >
           Confirmar
