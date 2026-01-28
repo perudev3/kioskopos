@@ -201,17 +201,28 @@ const saveSale = async (creditCustomer = null) => {
       .single()
 
     if (paymentMethod.value === 'por_cobrar' && creditCustomer) {
-      await supabase
-        .from('clientes_por_cobrar')
-        .insert({
-          user_id: user.value.id,
-          sale_id: sale.id,
-          customer_name: creditCustomer.customer_name,
-          customer_phone: creditCustomer.customer_phone,
-          comment: creditCustomer.comment,
-          total: total.value
-        })
+        const { error } = await supabase
+          .from('clientes_por_cobrar')
+          .insert({
+            user_id: user.value.id,
+            sale_id: sale.id,
+            customer_name: creditCustomer.customer_name,
+            customer_phone: creditCustomer.customer_phone,
+            comment: creditCustomer.comment,
+            total: total.value
+          })
+
+        if (error) {
+          console.error('ERROR clientes_por_cobrar:', error)
+          Swal.fire(
+            'Error crédito',
+            error.message,
+            'error'
+          )
+          throw error
+        }
     }
+
 
 
     const items = cart.value.map(p => ({
