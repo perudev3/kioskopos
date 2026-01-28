@@ -182,7 +182,7 @@ const total = computed(() =>
 /* =========================
    GUARDAR VENTA
 ========================= */
-const saveSale = async () => {
+const saveSale = async (creditCustomer = null) => {
   if (!cart.value.length) {
     return Swal.fire('Carrito vacío', 'Agrega productos', 'warning')
   }
@@ -199,6 +199,21 @@ const saveSale = async () => {
       })
       .select()
       .single()
+
+        // 🔥 GUARDAR CLIENTE POR COBRAR (AGREGADO)
+    if (paymentMethod.value === 'por_cobrar' && creditCustomer) {
+      await supabase
+        .from('clientes_por_cobrar')
+        .insert({
+          user_id: user.value.id,
+          sale_id: sale.id,
+          customer_name: creditCustomer.customer_name,
+          customer_phone: creditCustomer.customer_phone,
+          comment: creditCustomer.comment,
+          total: total.value
+        })
+    }
+
 
     const items = cart.value.map(p => ({
       sale_id: sale.id,

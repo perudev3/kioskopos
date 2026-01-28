@@ -45,7 +45,11 @@ const routes = [
       {
         path: '/reset-password',
         component: () => import('../views/ResetPassword.vue'),
-      },      
+      },     
+      {
+        path: '/paymend-pending',
+        component: () => import('../views/PendingPayments.vue'),
+      },       
     ],
   },
 ];

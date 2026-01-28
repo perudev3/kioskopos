@@ -92,6 +92,10 @@ onMounted(() => {
   Egresos
 </button>
 
+<button v-if="role !== 'admin'" @click="go('/paymend-pending')" class="btn">
+  Cobros
+</button>
+
 
       <button v-if="role === 'admin'" @click="go('/users')" class="btn">
         Usuarios

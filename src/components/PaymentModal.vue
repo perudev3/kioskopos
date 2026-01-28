@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 
 const props = defineProps({
   total: Number,
@@ -10,6 +10,19 @@ const emit = defineEmits(['update:method', 'confirm', 'close']);
 
 // Ref local para poder usar v-model
 const localMethod = ref(props.method);
+
+// 🔹 DATOS CLIENTE (AGREGADO)
+const customerName = ref('');
+const customerPhone = ref('');
+const customerComment = ref('');
+
+// 🔹 Validación simple (AGREGADO)
+const canConfirm = computed(() => {
+  if (localMethod.value === 'por_cobrar') {
+    return customerName.value.trim().length > 0 && !props.loading;
+  }
+  return !props.loading;
+});
 
 // Sincronizar si la prop cambia desde afuera
 watch(
@@ -34,10 +47,38 @@ watch(
         <option value="card">Tarjeta</option>
         <option value="yape">Yape</option>
         <option value="plin">Plin</option>
+        <option value="por_cobrar">Por cobrar</option>
       </select>
 
+      <!-- 🔥 FORMULARIO SOLO SI ES POR COBRAR (AGREGADO) -->
+      <div v-if="localMethod === 'por_cobrar'" class="credit-form">
+        <input
+          type="text"
+          placeholder="Nombre del cliente *"
+          v-model="customerName"
+        />
+        <input
+          type="tel"
+          placeholder="Teléfono (opcional)"
+          v-model="customerPhone"
+        />
+        <textarea
+          rows="2"
+          placeholder="Comentario (opcional)"
+          v-model="customerComment"
+        ></textarea>
+      </div>
+
       <div class="buttons">
-        <button :disabled="loading" class="confirm" @click="emit('confirm')">
+        <button
+          :disabled="!canConfirm"
+          class="confirm"
+          @click="emit('confirm', {
+            customer_name: customerName,
+            customer_phone: customerPhone,
+            comment: customerComment
+          })"
+        >
           Confirmar
         </button>
         <button class="cancel" @click="emit('close')">Cancelar</button>
@@ -69,11 +110,21 @@ watch(
   font-size: 24px;
   color: #111827;
 }
-select {
+select,
+input,
+textarea {
   padding: 8px;
   border-radius: 6px;
   border: 1px solid #d1d5db;
   width: 100%;
+}
+.credit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+textarea {
+  resize: none;
 }
 .buttons {
   display: flex;
