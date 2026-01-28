@@ -10,7 +10,13 @@ const loadPendingSales = async () => {
   loading.value = true
   const { data } = await supabase
     .from('sales')
-    .select('*')
+    .select(`
+      id,
+      total,
+      created_at,
+      payment_method,
+      clientes_por_cobrar!inner(customer_name)
+    `)
     .eq('payment_method', 'por_cobrar')
     .order('created_at', { ascending: false })
 
@@ -64,6 +70,9 @@ onMounted(loadPendingSales)
       <div v-for="sale in sales" :key="sale.id" class="card">
         <div class="info">
           <div class="total">S/ {{ sale.total.toFixed(2) }}</div>
+          <div class="customer">
+            Cliente: {{ sale.clientes_por_cobrar[0]?.customer_name }}
+          </div>
           <div class="date">
             {{ new Date(sale.created_at).toLocaleString() }}
           </div>
@@ -78,7 +87,6 @@ onMounted(loadPendingSales)
 </template>
 
 <style scoped>
-/* Fondo general */
 .page {
   min-height: 100vh;
   background: #f4f6f8;
@@ -86,13 +94,11 @@ onMounted(loadPendingSales)
   font-family: 'Inter', system-ui, sans-serif;
 }
 
-/* Contenedor */
 .container {
   max-width: 760px;
   margin: auto;
 }
 
-/* Títulos */
 h2 {
   font-size: 28px;
   font-weight: 800;
@@ -106,7 +112,6 @@ h2 {
   font-size: 14px;
 }
 
-/* Estado vacío */
 .empty {
   background: white;
   padding: 24px;
@@ -116,7 +121,6 @@ h2 {
   box-shadow: 0 8px 20px rgba(0,0,0,.06);
 }
 
-/* Card */
 .card {
   background: white;
   padding: 18px;
@@ -128,7 +132,6 @@ h2 {
   box-shadow: 0 10px 25px rgba(0,0,0,.08);
 }
 
-/* Info */
 .info {
   display: flex;
   flex-direction: column;
@@ -141,12 +144,16 @@ h2 {
   color: #111827;
 }
 
+.customer {
+  font-size: 14px;
+  color: #334155;
+}
+
 .date {
   font-size: 13px;
   color: #64748b;
 }
 
-/* Botón cobrar */
 .pay-btn {
   background: #16a34a;
   color: white;
