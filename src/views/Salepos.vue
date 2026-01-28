@@ -204,18 +204,25 @@ const saveSale = async (creditCustomer = null) => {
     if (saleError) throw saleError
 
     // 2️⃣ Guardar cliente por cobrar solo si aplica
-    if (paymentMethod.value === 'por_cobrar' && creditCustomer) {
+    if (paymentMethod.value === 'por_cobrar') {
+      // Asegúrate que creditCustomer existe
+      const name = creditCustomer?.customer_name?.trim() || 'Cliente'; // valor por defecto
+      const phone = creditCustomer?.customer_phone?.trim() || null;
+      const comment = creditCustomer?.comment?.trim() || null;
+
       const { error: creditError } = await supabase
         .from('clientes_por_cobrar')
         .insert({
           user_id: user.value.id,
           sale_id: sale.id,
-          customer_name: creditCustomer.customer_name || 'Cliente',
-          customer_phone: creditCustomer.customer_phone || null,
-          comment: creditCustomer.comment || null
-        })
-      if (creditError) throw creditError
+          customer_name: name,
+          customer_phone: phone,
+          comment: comment
+        });
+
+      if (creditError) throw creditError;
     }
+
 
     // 3️⃣ Guardar items de la venta
     const items = cart.value.map(p => ({
