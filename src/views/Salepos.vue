@@ -288,7 +288,7 @@ const saveSale = async (creditCustomer = null) => {
       :total="total"
       v-model:method="paymentMethod"
       :loading="loading"
-      @confirm="saveSale"
+      @confirm="saveSale($event)"
       @close="showPayment = false"
     />
   </div>
