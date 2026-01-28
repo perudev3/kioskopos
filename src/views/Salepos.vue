@@ -208,8 +208,7 @@ const saveSale = async (creditCustomer = null) => {
             sale_id: sale.id,
             customer_name: creditCustomer.customer_name,
             customer_phone: creditCustomer.customer_phone,
-            comment: creditCustomer.comment,
-            total: total.value
+            comment: creditCustomer.comment
           })
 
         if (error) {
