@@ -173,10 +173,29 @@ const editProduct = (product) => {
 };
 
 const deleteProduct = async (product) => {
-  if (!confirm('¿Eliminar producto?')) return;
-  await supabase.from('products').delete().eq('id', product.id);
-  loadProducts();
+  const result = await Swal.fire({
+    title: '¿Eliminar producto?',
+    text: `Vas a eliminar: ${product.name}`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Sí, eliminar',
+    cancelButtonText: 'Cancelar',
+  });
+
+  if (!result.isConfirmed) return;
+
+  try {
+    const { error } = await supabase.from('products').delete().eq('id', product.id);
+    if (error) throw error;
+
+    await loadProducts();
+    Swal.fire('Producto eliminado', '', 'success');
+  } catch (err) {
+    console.error('Error al eliminar producto:', err);
+    Swal.fire('Error', 'No se pudo eliminar el producto', 'error');
+  }
 };
+
 
 const filteredProducts = computed(() =>
   products.value.filter((p) =>
@@ -189,8 +208,10 @@ const filteredProducts = computed(() =>
 ========================= */
 const getProfit = (p) => {
   if (!p.sale_price || !p.price) return 0;
-  return Number(p.sale_price) - Number(p.price);
+  const profit = Number(p.sale_price) - Number(p.price);
+  return Math.round(profit * 100) / 100; // 🔹 redondea a 2 decimales
 };
+
 
 onMounted(loadProducts);
 </script>
