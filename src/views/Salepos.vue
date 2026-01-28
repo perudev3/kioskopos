@@ -190,7 +190,7 @@ const saveSale = async (creditCustomer = null) => {
   loading.value = true
 
   try {
-    // Guardar venta
+    // 1️⃣ Guardar venta
     const { data: sale, error: saleError } = await supabase
       .from('sales')
       .insert({
@@ -203,26 +203,21 @@ const saveSale = async (creditCustomer = null) => {
 
     if (saleError) throw saleError
 
+    // 2️⃣ Guardar cliente por cobrar solo si aplica
     if (paymentMethod.value === 'por_cobrar' && creditCustomer) {
-        // Construir objeto solo con columnas válidas
-        const clienteData = {}
-        const tableInfo = ['user_id', 'sale_id', 'customer_name', 'customer_phone', 'comment'] // tus columnas esperadas
+      const { error: creditError } = await supabase
+        .from('clientes_por_cobrar')
+        .insert({
+          user_id: user.value.id,
+          sale_id: sale.id,
+          customer_name: creditCustomer.customer_name || 'Cliente',
+          customer_phone: creditCustomer.customer_phone || null,
+          comment: creditCustomer.comment || null
+        })
+      if (creditError) throw creditError
+    }
 
-        if (tableInfo.includes('user_id')) clienteData.user_id = user.value.id
-        if (tableInfo.includes('sale_id')) clienteData.sale_id = sale.id
-        if (tableInfo.includes('customer_name')) clienteData.customer_name = creditCustomer.customer_name
-        if (tableInfo.includes('customer_phone')) clienteData.customer_phone = creditCustomer.customer_phone
-        if (tableInfo.includes('comment')) clienteData.comment = creditCustomer.comment
-
-        const { error: creditError } = await supabase
-          .from('clientes_por_cobrar')
-          .insert(clienteData)
-
-        if (creditError) throw creditError
-      }
-
-
-    // Guardar items de la venta
+    // 3️⃣ Guardar items de la venta
     const items = cart.value.map(p => ({
       sale_id: sale.id,
       product_id: p.id,
@@ -230,11 +225,10 @@ const saveSale = async (creditCustomer = null) => {
       price: p.sale_price,
       subtotal: p.sale_price * p.quantity
     }))
-
     const { error: itemsError } = await supabase.from('sale_items').insert(items)
     if (itemsError) throw itemsError
 
-    // Actualizar stock
+    // 4️⃣ Actualizar stock
     for (const p of cart.value) {
       const { error: stockError } = await supabase
         .from('products')
@@ -243,7 +237,7 @@ const saveSale = async (creditCustomer = null) => {
       if (stockError) throw stockError
     }
 
-    // Limpiar carrito y recargar productos
+    // 5️⃣ Limpiar carrito y recargar productos
     cart.value = []
     showPayment.value = false
     await loadProducts()
@@ -265,6 +259,7 @@ const saveSale = async (creditCustomer = null) => {
     loading.value = false
   }
 }
+
 
 </script>
 
