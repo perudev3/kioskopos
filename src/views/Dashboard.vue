@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard-page">
+  <div class="dashboard-page" >
     <h1 class="dashboard-title">Dashboard</h1>
 
     <!-- Tarjetas estadísticas -->

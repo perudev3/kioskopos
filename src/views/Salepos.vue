@@ -39,14 +39,35 @@ const startScanner = async () => {
     Swal.fire('Error', 'No se pudo iniciar la cámara', 'error')
     return
   }
+
   Quagga.init({
-    inputStream: { name: 'Live', type: 'LiveStream', target, constraints: { facingMode: 'environment' } },
-    decoder: { readers: ['code_128_reader', 'ean_reader', 'ean_8_reader'] }
+    inputStream: {
+      name: 'Live',
+      type: 'LiveStream',
+      target,
+      constraints: { facingMode: 'environment' }
+    },
+    locator: {
+      patchSize: 'medium',   // tamaño del área de búsqueda
+      halfSample: true       // más rápido y preciso
+    },
+    numOfWorkers: navigator.hardwareConcurrency || 4, // usa todos los cores disponibles
+    frequency: 10,           // scans por segundo
+    decoder: {
+      readers: ['code_128_reader', 'ean_reader'], // solo los que necesitas
+      multiple: false
+    },
+    locate: true
   }, (err) => {
-    if (err) { console.error(err); Swal.fire('Error', 'No se pudo abrir la cámara', 'error'); return }
+    if (err) {
+      console.error(err)
+      Swal.fire('Error', 'No se pudo abrir la cámara', 'error')
+      return
+    }
     Quagga.start()
     scanning = true
   })
+
   Quagga.offDetected()
   Quagga.onDetected(onDetected)
 }
@@ -58,14 +79,21 @@ const stopScanner = () => {
 }
 
 const onDetected = (data) => {
-  const scannedCode = data.codeResult.code.trim().toUpperCase().replace(/\s/g, '')
-  const product = products.value.find(p => p.barcode?.trim().toUpperCase().replace(/\s/g, '') === scannedCode)
+  if (!data || !data.codeResult) return
+  let scannedCode = data.codeResult.code.trim().toUpperCase().replace(/\s/g, '')
+
+  // Busca solo coincidencias exactas
+  const product = products.value.find(p =>
+    p.barcode?.trim().toUpperCase().replace(/\s/g, '') === scannedCode
+  )
+
   if (product) {
     addToCart(product)
     stopScanner()
-    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Producto agregado: ${product.name}`, showConfirmButton: false, timer: 1000 })
+    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Producto agregado: ${product.name}`, showConfirmButton: false, timer: 900 })
   }
 }
+
 
 /* =========================
    CARGAR PRODUCTOS

@@ -19,28 +19,32 @@ const routes = [
         path: '',
         name: 'dashboard',
         component: () => import('../views/Dashboard.vue'),
+        meta: { title: 'Dashboard' },
       },
       {
         path: 'sales',
         component: () => import('../views/Sales.vue'),
+        meta: { title: 'Ventas' },
       },
       {
         path: 'products',
         component: () => import('../views/Products.vue'),
+        meta: { title: 'Productos' },
       },
       {
         path: 'pos',
         component: () => import('../views/Salepos.vue'),
+        meta: { title: 'Punto de Venta' },
       },
       {
         path: 'users',
         component: () => import('../views/AdminUsers.vue'),
-        meta: { admin: true },
+        meta: { title: 'Usuarios', admin: true },
       },
       {
         path: 'egresos',
         component: () => import('../views/Egresos.vue'),
-        meta: { admin: true },
+        meta: { title: 'Egresos', admin: true },
       },
       {
         path: '/reset-password',
@@ -49,6 +53,7 @@ const routes = [
       {
         path: '/paymend-pending',
         component: () => import('../views/PendingPayments.vue'),
+        meta: { title: 'Pagos Pendientes' },
       },       
     ],
   },

@@ -1,15 +1,153 @@
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue';
+import { ref, computed, onMounted, nextTick, watch } from 'vue';
+import { Document, Packer, Paragraph, ImageRun, TextRun } from 'docx';
 import { supabase } from '../lib/supabase';
 import JsBarcode from 'jsbarcode';
+import Swal from 'sweetalert2';
+
+onMounted(async () => {
+  const { data } = await supabase.from('products').select('*');
+  products.value = data || [];
+});
+
+/* =========================
+   DESCARGA MASIVA DE BARCODES EN WORD
+========================= */
+const downloadAllBarcodesWord = async () => {
+  if (!products.value || products.value.length === 0) {
+    Swal.fire('No hay productos', 'Primero debes cargar productos para descargar los barcodes.', 'info');
+    return;
+  }
+
+  const doc = new Document({
+    sections: [{ properties: {}, children: [] }]
+  });
+
+  for (const product of products.value) {
+    if (!product.barcode) continue;
+
+    try {
+      // Canvas final con espacio para el nombre
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      canvas.width = 250;
+      canvas.height = 100; // espacio para el nombre + barcode
+
+      // Fondo blanco
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Escribir nombre del producto arriba
+      ctx.fillStyle = 'black';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(product.name, canvas.width / 2, 20);
+
+      // Generar el barcode directamente sobre el canvas
+      JsBarcode(canvas, product.barcode, {
+        format: 'CODE128',
+        width: 2,
+        height: 60,
+        displayValue: true,
+        textMargin: 5,
+        margin: 0,
+      });
+
+      // Convertir a arrayBuffer para docx
+      const arrayBuffer = await (await fetch(canvas.toDataURL('image/png'))).arrayBuffer();
+
+      // Agregar al Word
+      doc.sections[0].children.push(
+        new Paragraph({
+          children: [new ImageRun({ data: arrayBuffer, transformation: { width: 250, height: 100 } })],
+          spacing: { after: 400 }
+        })
+      );
+
+    } catch (error) {
+      console.error('Error generando barcode para', product.name, error);
+    }
+  }
+
+  const blob = await Packer.toBlob(doc);
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `Barcodes_Productos.docx`;
+  link.click();
+};
+
+
+const printAllBarcodes = async () => {
+  if (!products.value || products.value.length === 0) {
+    Swal.fire('No hay productos', 'Primero debes cargar productos para imprimir los barcodes.', 'info');
+    return;
+  }
+
+  // Crear contenedor HTML para imprimir
+  const printWindow = window.open('', '_blank', 'width=800,height=600');
+  if (!printWindow) return;
+
+  const html = `
+    <html>
+      <head>
+        <title>Barcodes de Productos</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          .product { margin-bottom: 40px; }
+          .product-name { font-weight: bold; margin-bottom: 8px; }
+          canvas { display: block; margin-top: 5px; }
+        </style>
+      </head>
+      <body>
+        ${products.value.map(p => `
+          <div class="product">
+            <div class="product-name">${p.name}</div>
+            <canvas id="barcode-${p.id}"></canvas>
+            <div>Código: ${p.barcode}</div>
+          </div>
+        `).join('')}
+      </body>
+    </html>
+  `;
+
+  printWindow.document.write(html);
+  printWindow.document.close();
+
+  // Esperar que se renderice el contenido
+  printWindow.onload = () => {
+    // Generar todos los barcodes en los canvas
+    products.value.forEach(p => {
+      if (!p.barcode) return;
+      const canvas = printWindow.document.getElementById(`barcode-${p.id}`);
+      if (canvas) {
+        JsBarcode(canvas, p.barcode, {
+          format: 'CODE128',
+          width: 2,
+          height: 60,
+          displayValue: true,
+          textMargin: 5,
+        });
+      }
+    });
+
+    // Abrir diálogo de impresión
+    printWindow.focus();
+    printWindow.print();
+  };
+};
+
+
+
 
 /* =========================
    FORMULARIO
 ========================= */
 const name = ref('');
-const price = ref('');        // 👉 PRECIO BASE
-const sale_price = ref('');   // 👉 PRECIO VENTA (AGREGADO)
+const price = ref('');
+const sale_price = ref('');
 const stock = ref('');
+const unit_type = ref('UNIT'); // ✅ NUEVO
 const file = ref(null);
 
 const imageFile = ref(null);
@@ -20,31 +158,6 @@ const imagePreview = computed(() =>
 const onFileChange = (e) => {
   imageFile.value = e.target.files[0];
   file.value = imageFile.value;
-};
-
-const uploadImage = async () => {
-  if (!imageFile.value) return null;
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const fileName = `${user.id}/product-${Date.now()}-${imageFile.value.name}`;
-
-  const { error } = await supabase.storage
-    .from('products')
-    .upload(fileName, imageFile.value, {
-      upsert: true,
-      contentType: imageFile.value.type,
-    });
-
-  if (error) {
-    console.error('Error subiendo imagen:', error);
-    return null;
-  }
-
-  const { data } = supabase.storage.from('products').getPublicUrl(fileName);
-  return data.publicUrl;
 };
 
 /* =========================
@@ -61,25 +174,142 @@ const filterName = ref('');
 const editingProduct = ref(null);
 
 /* =========================
-   BARCODE
+   CÁLCULO POR PESO / UNIDAD
 ========================= */
-const generateBarcodeValue = () => {
-  return 'KP-' + Date.now();
+const calculateTotal = (product, quantity) => {
+  if (product.unit_type === 'UNIT') {
+    return Number(product.sale_price) * Number(quantity);
+  }
+  return Number(product.sale_price) * Number(quantity);
 };
 
-const downloadBarcode = (barcode) => {
-  const canvas = document.createElement('canvas');
-  JsBarcode(canvas, barcode, {
+/* =========================
+   GUARDAR / ACTUALIZAR
+========================= */
+const saveProduct = async () => {
+  const {
+    data: { user: authUser },
+  } = await supabase.auth.getUser();
+
+  if (editingProduct.value) {
+    await supabase.from('products').update({
+      name: name.value,
+      price: price.value,
+      sale_price: sale_price.value,
+      stock: stock.value,
+      unit_type: unit_type.value, // ✅
+    }).eq('id', editingProduct.value.id);
+  } else {
+    await supabase.from('products').insert({
+      name: name.value,
+      price: price.value,
+      sale_price: sale_price.value,
+      stock: stock.value,
+      unit_type: unit_type.value, // ✅
+      user_id: authUser.id,
+      barcode: 'KP-' + Date.now(),
+    });
+  }
+
+  name.value = '';
+  price.value = '';
+  sale_price.value = '';
+  stock.value = '';
+  unit_type.value = 'UNIT';
+  editingProduct.value = null;
+  showModal.value = false;
+
+  loadProducts();
+};
+
+/* =========================
+   DESCARGAR BARCODE
+========================= */
+const downloadBarcode = (product) => {
+  const barcodeCanvas = document.createElement('canvas');
+
+  // Generar código de barras en un canvas temporal
+  JsBarcode(barcodeCanvas, product.barcode, {
     format: 'CODE128',
     width: 2,
-    height: 80,
+    height: 60,
+    displayValue: true,
+    textMargin: 5,
   });
 
+  // Canvas final más grande para incluir el nombre
+  const finalCanvas = document.createElement('canvas');
+  const ctx = finalCanvas.getContext('2d');
+
+  finalCanvas.width = barcodeCanvas.width;
+  finalCanvas.height = barcodeCanvas.height + 30; // espacio para el nombre
+
+  // Fondo blanco
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+
+  // Escribir el nombre del producto arriba
+  ctx.fillStyle = 'black';
+  ctx.font = '16px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(product.name, finalCanvas.width / 2, 20);
+
+  // Pegar el código de barras debajo del nombre
+  ctx.drawImage(barcodeCanvas, 0, 30);
+
+  // Descargar la imagen
   const link = document.createElement('a');
-  link.href = canvas.toDataURL('image/png');
-  link.download = `${barcode}.png`;
+  link.href = finalCanvas.toDataURL('image/png');
+  link.download = `${product.barcode}.png`;
   link.click();
 };
+
+
+/* =========================
+   GANANCIA
+========================= */
+const getProfit = (p) => {
+  if (!p.sale_price || !p.price) return 0;
+  return Math.round((Number(p.sale_price) - Number(p.price)) * 100) / 100;
+};
+
+
+const editProduct = (product) => {
+  editingProduct.value = product;
+  name.value = product.name;
+  price.value = product.price;
+  sale_price.value = product.sale_price;
+  stock.value = product.stock;
+  unit_type.value = product.unit_type || 'UNIT';
+  showModal.value = true;
+};
+
+/* =========================
+   FILTRO
+========================= */
+const filteredProducts = computed(() =>
+  products.value.filter((p) =>
+    p.name.toLowerCase().includes(filterName.value.toLowerCase())
+  )
+);
+
+watch(products, async () => {
+  await nextTick();
+
+  products.value.forEach((p) => {
+    if (!p.barcode) return;
+
+    const el = document.getElementById(`barcode-${p.id}`);
+    if (el) {
+      JsBarcode(el, p.barcode, {
+        format: 'CODE128',
+        width: 2,
+        height: 50,
+        displayValue: true,
+      });
+    }
+  });
+});
 
 /* =========================
    CARGAR PRODUCTOS
@@ -114,116 +344,23 @@ const loadProducts = async () => {
   });
 };
 
-/* =========================
-   GUARDAR / ACTUALIZAR
-========================= */
-const saveProduct = async () => {
-  let image_url = editingProduct.value ? editingProduct.value.image_url : null;
 
-  const uploaded = await uploadImage();
-  if (uploaded) image_url = uploaded;
-
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
-
-  if (editingProduct.value) {
-    await supabase
-      .from('products')
-      .update({
-        name: name.value,
-        price: price.value,             // precio base
-        sale_price: sale_price.value,   // precio venta
-        stock: stock.value,
-        image_url,
-      })
-      .eq('id', editingProduct.value.id);
-  } else {
-    await supabase.from('products').insert({
-      name: name.value,
-      price: price.value,               // precio base
-      sale_price: sale_price.value,     // precio venta
-      stock: stock.value,
-      image_url,
-      user_id: authUser.id,
-      barcode: generateBarcodeValue(),
-    });
-  }
-
-  name.value = '';
-  price.value = '';
-  sale_price.value = '';
-  stock.value = '';
-  imageFile.value = null;
-  file.value = null;
-  editingProduct.value = null;
-
-  showModal.value = false;
-  loadProducts();
-};
-
-const editProduct = (product) => {
-  editingProduct.value = product;
-  name.value = product.name;
-  price.value = product.price;
-  sale_price.value = product.sale_price;
-  stock.value = product.stock;
-  imageFile.value = null;
-  showModal.value = true;
-};
-
-const deleteProduct = async (product) => {
-  const result = await Swal.fire({
-    title: '¿Eliminar producto?',
-    text: `Vas a eliminar: ${product.name}`,
-    icon: 'warning',
-    showCancelButton: true,
-    confirmButtonText: 'Sí, eliminar',
-    cancelButtonText: 'Cancelar',
-  });
-
-  if (!result.isConfirmed) return;
-
-  try {
-    const { error } = await supabase.from('products').delete().eq('id', product.id);
-    if (error) throw error;
-
-    await loadProducts();
-    Swal.fire('Producto eliminado', '', 'success');
-  } catch (err) {
-    console.error('Error al eliminar producto:', err);
-    Swal.fire('Error', 'No se pudo eliminar el producto', 'error');
-  }
-};
-
-
-const filteredProducts = computed(() =>
-  products.value.filter((p) =>
-    p.name.toLowerCase().includes(filterName.value.toLowerCase())
-  )
-);
-
-/* =========================
-   GANANCIA
-========================= */
-const getProfit = (p) => {
-  if (!p.sale_price || !p.price) return 0;
-  const profit = Number(p.sale_price) - Number(p.price);
-  return Math.round(profit * 100) / 100; // 🔹 redondea a 2 decimales
-};
-
-
-onMounted(loadProducts);
 </script>
+
+
 
 <template>
   <div class="products-page">
     <div class="header">
-      <h1>📦 Mis Productos</h1>
       <button class="btn-primary" @click="showModal = true">
         ➕ Agregar
       </button>
+      
+      <button class="btn-primary" @click="printAllBarcodes">
+        🖨️ Imprimir
+      </button>
     </div>
+
 
     <div class="filter-section">
       <input type="text" v-model="filterName" placeholder="Buscar producto..." />
@@ -258,9 +395,10 @@ onMounted(loadProducts);
           <div class="actions">
             <button class="btn-edit" @click="editProduct(p)">✏️</button>
             <button class="btn-delete" @click="deleteProduct(p)">🗑️</button>
-            <button v-if="p.barcode" class="btn-primary" @click="downloadBarcode(p.barcode)">
+            <button v-if="p.barcode" class="btn-primary" @click="downloadBarcode(p)">
               🖨️
             </button>
+
           </div>
         </div>
       </div>
@@ -274,6 +412,10 @@ onMounted(loadProducts);
         <input v-model="price" type="number" placeholder="Precio base" />
         <input v-model="sale_price" type="number" placeholder="Precio venta" />
         <input v-model="stock" type="number" placeholder="Stock" />
+        <select v-model="unit_type" class="unit-select">
+          <option value="UNIT">Por unidad</option>
+          <option value="WEIGHT">Por peso (kilos)</option>
+        </select>
         <input type="file" accept="image/*" @change="onFileChange" />
 
         <img v-if="imagePreview" :src="imagePreview" class="preview-img" />
@@ -305,12 +447,13 @@ onMounted(loadProducts);
 
 /* HEADER ESTÁTICO */
 .header {
-  flex-shrink: 0;                /* 🔑 no se mueve */
   display: flex;
-  justify-content: space-between;
+  justify-content: space-between; /* 🔑 pone los botones en extremos */
   align-items: center;
   margin-bottom: 16px;
+  flex-shrink: 0;
 }
+
 
 /* FILTRO ESTÁTICO */
 .filter-section {
@@ -328,11 +471,28 @@ onMounted(loadProducts);
   outline: none;
 }
 
-/* 🔥 ÚNICO ELEMENTO CON SCROLL */
+/* 🔥 ÚNICO ELEMENTO CON SCROLL AJUSTADO */
 .product-list-container {
-  flex: 1;                       /* 🔑 ocupa el resto */
-  overflow-y: auto;              /* 🔑 SOLO AQUÍ SCROLL */
+  flex: 1;                       /* ocupa el resto del espacio disponible */
+  overflow-y: auto;              /* scroll solo aquí */
   padding-right: 6px;
+
+  /* 🔹 NUEVO: altura máxima menor para móviles */
+  max-height: calc(98vh - 199px); /* ajusta según header + filtros + padding */
+}
+
+/* OPCIONAL: suavizar scroll */
+.product-list-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.product-list-container::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.5);
+  border-radius: 3px;
+}
+
+.product-list-container::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* GRID */
@@ -501,6 +661,44 @@ onMounted(loadProducts);
     opacity: 1;
     transform: scale(1);
   }
+}
+
+/* ===============================
+   SELECT – UNIDAD / PESO
+=============================== */
+
+.unit-select {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  font-size: 14px;
+  background-color: #ffffff;
+  color: #111827;
+  outline: none;
+  cursor: pointer;
+
+  /* quita estilo nativo */
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  /* flecha custom */
+  background-image: url("data:image/svg+xml,%3Csvg fill='none' stroke='%236366f1' stroke-width='2' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 18px;
+}
+
+/* hover */
+.unit-select:hover {
+  border-color: #6366f1;
+}
+
+/* focus */
+.unit-select:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
 }
 
 </style>

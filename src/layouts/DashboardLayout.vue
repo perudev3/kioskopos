@@ -7,7 +7,7 @@
     <div class="main-content">
       <!-- Topbar fijo con botón toggle y título -->
       <div class="topbar">
-        <h1 class="view-title">{{ moduleTitle }}</h1>
+        <h1 class="view-title">{{ route.meta.title || 'Mi Aplicación' }}</h1>
       </div>
 
       <!-- Contenido del módulo scrollable -->
@@ -38,10 +38,20 @@ const setModuleTitle = () => {
     case 'POS':
       moduleTitle.value = 'Punto de Venta';
       break;
+    case 'Products':
+      moduleTitle.value = 'Productos';
+      break;
+    case 'Orders':
+      moduleTitle.value = 'Órdenes';
+      break;
+    case 'Reports':
+      moduleTitle.value = 'Reportes';
+      break;
     default:
-      moduleTitle.value = '';
+      moduleTitle.value = 'Mi Aplicación'; 
   }
 };
+
 
 // Actualiza el título cada vez que cambie la ruta
 watch(() => route.name, setModuleTitle, { immediate: true });
@@ -83,15 +93,15 @@ watch(() => route.name, setModuleTitle, { immediate: true });
 .view-title {
   font-size: 20px;
   color: #111827;
-  margin: 0;
+  margin: 60px;
   font-weight: 600;
 }
 
 /* Contenido del módulo scrollable */
 .module-body {
   flex: 1;
-  overflow-y: auto; /* Habilita scroll solo aquí */
   padding: 0px;
   background: #f3f4f6;
+  /*overflow-y:auto;*/
 }
 </style>
