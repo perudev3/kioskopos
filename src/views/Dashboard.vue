@@ -311,7 +311,6 @@ onMounted(async () => {
 
 
 <style scoped>
-
 .welcome-msg {
   font-size: 16px;
   font-weight: 600;
@@ -328,10 +327,20 @@ onMounted(async () => {
 
   display: flex;
   flex-direction: column;
-  height: 88vh;       /* ocupar toda la pantalla */
-  overflow-y: auto;    /* scroll vertical si es necesario */
+
+  /* Desktop: permitir que el navegador haga scroll */
+  height: auto;
+  min-height: auto;
+  overflow-y: visible;
 }
 
+/* Móviles: scroll interno limitado */
+@media (max-width: 768px) {
+  .dashboard-page {
+    height: 88vh;
+    overflow-y: auto;
+  }
+}
 
 .dashboard-title {
   font-size: 28px;
@@ -394,6 +403,20 @@ onMounted(async () => {
   font-size: 18px;
   margin-bottom: 12px;
   color: #4338ca;
+}
+
+/* =========================
+   CHARTS RESPONSIVOS
+========================= */
+.chart-card canvas {
+  width: 100% !important;
+  height: 250px;
+}
+
+@media (max-width: 480px) {
+  .chart-card canvas {
+    height: 200px;
+  }
 }
 
 /* =========================

@@ -102,6 +102,6 @@ watch(() => route.name, setModuleTitle, { immediate: true });
   flex: 1;
   padding: 0px;
   background: #f3f4f6;
-  /*overflow-y:auto;*/
+  overflow-y:auto;
 }
 </style>

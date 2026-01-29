@@ -439,7 +439,20 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   gap: 18px;
   overflow-y: auto;
   padding-bottom: 8px;
+
+  /* 🔑 Ajuste principal */
+  max-height: calc(100vh - 220px); /* Altura máxima disponible, ajusta según header/cart */
+  /* opcional: si quieres que el scroll siempre aparezca */
+  /* overflow-y: scroll; */
 }
+
+/* Ajuste para que el scroll se vea en móviles */
+@media (max-width: 480px) {
+  .product-grid {
+    max-height: calc(100vh - 200px);
+  }
+}
+
 
 /* CARD PRODUCTO */
 .product-card {

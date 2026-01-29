@@ -183,7 +183,7 @@ const transferProfitToCapital = async () => {
   margin: auto;
   font-family: 'Segoe UI', sans-serif;
   color: #0f172a;
-  background: #f8fafc;
+  /*background: #f8fafc;*/
 }
 
 /* =========================
