@@ -285,11 +285,15 @@ const showCapitalModal = ref(false)
 
 <style scoped>
 .egresos-page {
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
   max-width: 900px;
   margin: auto;
+  padding: 20px;
   font-family: 'Segoe UI', sans-serif;
   color: #111827;
+  height: 100vh; /* Ocupa toda la pantalla */
+  box-sizing: border-box;
 }
 
 h1 {
@@ -299,70 +303,92 @@ h1 {
   color: #4f46e5;
 }
 
+/* ================================
+   RESUMEN: CARDS COMPACTOS Y FLEXIBLES
+================================ */
 .summary {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); /* min más pequeño para compactar */
   gap: 12px;
   margin-bottom: 16px;
-  flex-wrap: wrap;
 }
 
 .summary div {
   background: #f9fafb;
-  padding: 12px 16px;
+  padding: 10px 14px; /* un poco más compacto */
   border-radius: 10px;
-  min-width: 180px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start; /* textos alineados a la izquierda */
+  justify-content: center;
 }
 
 .summary strong {
   display: block;
-  font-size: 18px;
-  margin-top: 4px;
+  font-size: 16px; /* más pequeño que antes */
+  margin-top: 2px;
 }
 
-.summary .egreso strong {
-  color: #dc2626;
+.summary .egreso strong { color: #dc2626; }
+.summary .capital strong { color: #16a34a; }
+.summary div span {
+  font-size: 14px;
 }
 
-.summary .capital strong {
-  color: #16a34a;
-}
-
+/* ================================
+   BOTONES DE ACCIONES COMPACTOS
+================================ */
 .card {
   background: #ffffff;
-  padding: 16px;
+  padding: 12px 14px;        /* más compacto */
   border-radius: 12px;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); /* se ajustan al espacio disponible */
   gap: 10px;
-  flex-wrap: wrap;
   box-shadow: 0 4px 12px rgba(0,0,0,0.05);
   margin-bottom: 16px;
-}
-
-.card input {
-  flex: 1 1 200px;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid #d1d5db;
 }
 
 .card button {
   background: #4f46e5;
   color: white;
   border: none;
-  padding: 10px 18px;
+  padding: 10px;
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
+  width: 100%;              /* ocupa toda la columna que le toque */
+  transition: all 0.2s ease;
 }
 
 .card button:hover {
   background: #4338ca;
 }
 
+/* ================================
+   LISTA DE EGRESOS / MOVIMIENTOS
+================================ */
 .list-container {
-  max-height: 55vh;
-  overflow-y: auto;
+  max-height: 34vh;          /* subimos la altura para ver más registros */
+  overflow-y: auto;           /* scroll vertical si hay muchos registros */
+  margin-top: 16px;
+  padding-right: 4px;         /* evita que el scroll tape contenido */
+}
+
+/* Scroll más visible y moderno */
+.list-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.list-container::-webkit-scrollbar-thumb {
+  background: rgba(79, 70, 229, 0.5);
+  border-radius: 3px;
+}
+
+.list-container::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 3px;
 }
 
 .egreso-item {
@@ -393,6 +419,9 @@ h1 {
   color: #6b7280;
 }
 
+/* ================================
+   MODALES
+================================ */
 .modal-backdrop {
   position: fixed;
   inset: 0;

@@ -1,6 +1,8 @@
 <template>
   <div class="dashboard-page" >
-    <h1 class="dashboard-title">Dashboard</h1>
+    <p class="welcome-msg" v-if="user">
+      👋 ¡Hola, {{ user?.user_metadata?.full_name || user.email }}!
+    </p>
 
     <!-- Tarjetas estadísticas -->
     <div class="dashboard-grid">
@@ -119,6 +121,8 @@ import { supabase } from '../lib/supabase';
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
+
+const user = ref(null);
 
 /* =========================
    HELPERS
@@ -299,16 +303,35 @@ const initCharts = () => {
 const realTotalProfit = computed(() => realProfitTotal.value);
 
 onMounted(loadDashboard);
+onMounted(async () => {
+  const { data } = await supabase.auth.getUser();
+  if (data?.user) user.value = data.user;
+});
 </script>
 
 
 <style scoped>
+
+.welcome-msg {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #16a34a;
+}
+
+
 .dashboard-page {
   max-width: 1200px;
   margin: auto;
   padding: 20px;
   color: #111827;
+
+  display: flex;
+  flex-direction: column;
+  height: 88vh;       /* ocupar toda la pantalla */
+  overflow-y: auto;    /* scroll vertical si es necesario */
 }
+
 
 .dashboard-title {
   font-size: 28px;
