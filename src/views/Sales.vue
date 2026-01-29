@@ -26,6 +26,7 @@ const loadSales = async () => {
     .from('sales')
     .select('*')
     .eq('user_id', user.value.id)
+    .neq('payment_method', 'por_cobrar')   /* ✅ Excluir ventas "por cobrar" */
     .order('created_at', { ascending: false });
 
   if (fromDate.value) query = query.gte('created_at', fromDate.value);
@@ -92,7 +93,6 @@ const transferProfitToCapital = async () => {
   profitToCapital.value = ''
   showProfitModal.value = false
 }
-
 </script>
 
 <template>
