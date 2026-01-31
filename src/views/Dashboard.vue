@@ -10,7 +10,7 @@
         <div class="welcome-text">
           <span class="welcome-small">Bienvenido 👋</span>
           <h1 class="welcome-title">
-            {{ profile?.name || user.email }}!
+            {{ profile.name}}!
           </h1>
         </div>
     </div>
