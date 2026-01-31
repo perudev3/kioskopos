@@ -118,7 +118,7 @@ const saveQR = async (method) => {
       >
         <div class="card-header" :style="{ borderColor: m.color }">
           <span class="dot" :style="{ background: m.color }"></span>
-          <h3>{{ m.label }}</h3>
+          <h3 style="color: black;">{{ m.label }}</h3>
         </div>
 
         <label>Nombre a mostrar</label>
@@ -153,10 +153,12 @@ const saveQR = async (method) => {
   max-width: 900px;
   margin: auto;
   padding: 24px;
+  color: black;
 }
 
 h2 {
   margin-bottom: 4px;
+  color: black;
 }
 
 .subtitle {
