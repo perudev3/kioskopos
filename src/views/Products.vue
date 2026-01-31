@@ -293,6 +293,25 @@ const filteredProducts = computed(() =>
   )
 );
 
+watch(filteredProducts, async () => {
+  await nextTick();
+
+  filteredProducts.value.forEach((p) => {
+    if (!p.barcode) return;
+
+    const el = document.getElementById(`barcode-${p.id}`);
+    if (el) {
+      JsBarcode(el, p.barcode, {
+        format: 'CODE128',
+        width: 2,
+        height: 50,
+        displayValue: true,
+      });
+    }
+  });
+});
+
+
 watch(products, async () => {
   await nextTick();
 

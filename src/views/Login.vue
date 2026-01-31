@@ -92,7 +92,12 @@ const login = async () => {
       }
     }
 
-    router.push('/');
+    if (profile.role === 'admin') {
+      router.push('/users');
+    } else {
+      router.push('/');
+    }
+
   } catch (err) {
     console.error(err);
     error.value = 'Error inesperado, revisa la consola';

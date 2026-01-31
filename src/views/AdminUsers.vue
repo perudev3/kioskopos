@@ -172,7 +172,6 @@ onMounted(loadUsers);
               </button>
               <button @click="openEditModal(u)">Editar</button>
               <button class="danger" @click="deleteUser(u.id)">Eliminar</button>
-              <button @click="resetPasswordByEmail(u)">Reset clave</button>
             </td>
           </tr>
         </tbody>
@@ -295,12 +294,24 @@ td {
 }
 
 /* ACTIONS */
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .actions button {
-  margin-right: 6px;
-  padding: 6px 8px;
+  padding: 6px 10px;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   background: #e0e7ff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.actions button:hover {
+  background: #c7d2fe;
 }
 
 .actions .danger {
@@ -325,4 +336,127 @@ td {
   display: grid;
   gap: 10px;
 }
+
+.table-wrapper {
+  max-height: 65vh;
+  overflow-y: auto;
+  background: white;
+  border-radius: 14px;
+  box-shadow: 0 8px 20px rgba(0,0,0,.08);
+}
+
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  background: #eef2ff;
+  z-index: 2;
+}
+
+tbody tr:hover {
+  background: #f8fafc;
+}
+
+td:first-child,
+th:first-child {
+  padding-left: 16px;
+}
+
+td:last-child,
+th:last-child {
+  padding-right: 16px;
+}
+
+/* ===== MODAL PRO ===== */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+}
+
+.modal {
+  background: #ffffff;
+  padding: 22px;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 25px 50px rgba(0,0,0,.35);
+  animation: modalFade 0.25s ease;
+}
+
+.modal h3 {
+  margin: 0 0 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #4f46e5;
+  text-align: center;
+}
+
+.modal input {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #c7d2fe;
+  font-size: 14px;
+}
+
+.modal input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99,102,241,.25);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.modal-actions button {
+  flex: 1;
+  padding: 10px;
+  border-radius: 10px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.modal-actions button:first-child {
+  background: #4f46e5;
+  color: white;
+}
+
+.modal-actions button:first-child:hover {
+  background: #4338ca;
+}
+
+.modal-actions button:last-child {
+  background: #e5e7eb;
+}
+
+.modal-actions button:last-child:hover {
+  background: #d1d5db;
+}
+
+/* Animación */
+@keyframes modalFade {
+  from {
+    opacity: 0;
+    transform: scale(.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 </style>
