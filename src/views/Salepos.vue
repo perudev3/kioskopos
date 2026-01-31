@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick , watch } from 'vue'
 import { supabase } from '../lib/supabase'
 import Swal from 'sweetalert2'
 import Quagga from 'quagga'
@@ -13,6 +13,30 @@ const showPayment = ref(false)
 const paymentMethod = ref('cash')
 const user = ref(null)
 const loading = ref(false)
+const selectedQR = ref(null)
+
+
+const paymentQRs = ref([])
+
+const loadPaymentQRs = async () => {
+  const { data } = await supabase
+    .from('payment_qrs')
+    .select('*')
+    .eq('user_id', user.value.id)
+    .eq('active', true)
+
+  paymentQRs.value = data || []
+}
+
+watch(paymentMethod, (method) => {
+  if (method === 'yape' || method === 'plin') {
+    selectedQR.value =
+      paymentQRs.value.find(qr => qr.method === method) || null
+  } else {
+    selectedQR.value = null
+  }
+})
+
 
 const updateQuantity = (id, newQty) => {
   const item = cart.value.find(p => p.id === id)
@@ -101,9 +125,18 @@ const onDetected = (data) => {
 const loadProducts = async () => {
   const { data: auth } = await supabase.auth.getUser()
   user.value = auth.user
-  const { data } = await supabase.from('products').select('*').eq('user_id', user.value.id).gt('stock', 0)
+
+  const { data } = await supabase
+    .from('products')
+    .select('*')
+    .eq('user_id', user.value.id)
+    .gt('stock', 0)
+
   products.value = data || []
+
+  await loadPaymentQRs()
 }
+
 
 onMounted(loadProducts)
 onBeforeUnmount(stopScanner)
