@@ -85,9 +85,9 @@ const exportPNG = async () => {
         </div>
 
         <p class="thanks">¡Gracias por su compra!</p>
-      </div>
-
-      <!-- BOTONES -->
+      </div>      
+    </div>
+    <!-- BOTONES -->
       <button class="btn primary" @click="exportPNG">
         🧾 Descargar boleta
       </button>
@@ -95,7 +95,6 @@ const exportPNG = async () => {
       <button class="btn" @click="emit('close')">
         Cerrar
       </button>
-    </div>
     </div>
   </div>
 </template>
