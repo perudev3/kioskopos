@@ -1,8 +1,20 @@
 <template>
   <div class="dashboard-page" >
-    <p class="welcome-msg" v-if="user">
-      👋 ¡Hola, {{ user?.user_metadata?.full_name || user.email }}!
-    </p>
+    <div class="welcome-card" v-if="user">
+        <img
+          src="/logo-sin-fondo.png"
+          alt="Logo"
+          class="welcome-logo"
+        />
+
+        <div class="welcome-text">
+          <span class="welcome-small">Bienvenido 👋</span>
+          <h1 class="welcome-title">
+            {{ profile?.name || user.email }}!
+          </h1>
+        </div>
+    </div>
+
 
     <!-- Tarjetas estadísticas -->
     <div class="dashboard-grid">
@@ -122,7 +134,9 @@ import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
 
-const user = ref(null);
+const profile = ref(null)
+const user = ref(null)
+
 
 /* =========================
    HELPERS
@@ -304,9 +318,23 @@ const realTotalProfit = computed(() => realProfitTotal.value);
 
 onMounted(loadDashboard);
 onMounted(async () => {
-  const { data } = await supabase.auth.getUser();
-  if (data?.user) user.value = data.user;
-});
+  const { data, error } = await supabase.auth.getUser()
+
+  if (error || !data?.user) return
+
+  user.value = data.user
+
+  const { data: profileData, error: profileError } = await supabase
+    .from('profiles')
+    .select('name')
+    .eq('id', data.user.id) // 👈 ESTE id YA EXISTE
+    .single()
+
+  if (!profileError) {
+    profile.value = profileData
+  }
+})
+
 </script>
 
 
@@ -495,5 +523,48 @@ onMounted(async () => {
     grid-template-columns: 1fr;
   }
 }
+
+/* =========================
+   BIENVENIDA PRO
+========================= */
+.welcome-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(135deg, #f8fafc, #eef2ff);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.12);
+}
+
+.welcome-logo {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  border-radius: 10px;
+  background: white;
+  padding: 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.1);
+}
+
+.welcome-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.welcome-small {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.welcome-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e3a8a;
+  line-height: 1.2;
+}
+
 </style>
 
