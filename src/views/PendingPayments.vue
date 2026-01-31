@@ -88,7 +88,7 @@ onMounted(loadPendingSales)
           class="receipt-btn"
           @click="selectedSale = sale"
         >
-          🧾 Boleta
+          Boleta
         </button>
       </div>
     </div>
@@ -191,13 +191,12 @@ h2 {
     background: #0b3c5d;
     color: white;
     border: none;
-    padding: 1px 14px;
+    padding: 10px 16px;
     border-radius: 12px;
     font-size: 14px;
     font-weight: 600;
     cursor: pointer;
     transition: all .2s ease;
-    margin: 4px;
 }
 
 .receipt-btn:hover {
