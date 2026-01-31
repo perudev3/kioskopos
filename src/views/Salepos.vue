@@ -19,14 +19,22 @@ const selectedQR = ref(null)
 const paymentQRs = ref([])
 
 const loadPaymentQRs = async () => {
-  const { data } = await supabase
+  if (!user.value?.id) return
+
+  const { data, error } = await supabase
     .from('payment_qrs')
     .select('*')
     .eq('user_id', user.value.id)
     .eq('active', true)
 
+  if (error) {
+    console.error('ERROR QR:', error)
+    return
+  }
+
   paymentQRs.value = data || []
 }
+
 
 watch(paymentMethod, (method) => {
   if (method === 'yape' || method === 'plin') {
