@@ -1,4 +1,5 @@
 <script setup>
+import html2canvas from 'html2canvas'
 import { ref, computed, onMounted } from 'vue';
 import { supabase } from '../lib/supabase';
 
@@ -7,11 +8,26 @@ import SaleDetailModal from '../components/SaleDetailModal.vue';
 
 const sales = ref([]);
 const selectedSale = ref(null);
+const receiptRef = ref(null)
 
 const fromDate = ref('');
 const toDate = ref('');
 const user = ref(null);
 const loading = ref(false);
+
+const exportBoleta = async () => {
+  if (!receiptRef.value) return
+
+  const canvas = await html2canvas(receiptRef.value, {
+    scale: 2,
+    backgroundColor: '#ffffff'
+  })
+
+  const link = document.createElement('a')
+  link.download = `boleta-${props.sale.id}.png`
+  link.href = canvas.toDataURL('image/png')
+  link.click()
+}
 
 /* =========================
    CARGAR VENTAS
@@ -305,6 +321,8 @@ const transferProfitToCapital = async () => {
   box-shadow: 0 25px 50px rgba(0,0,0,.35);
   z-index: 1001;
 }
+
+
 
 .modal h2 {
   font-size: 20px;

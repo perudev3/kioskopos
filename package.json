@@ -12,6 +12,7 @@
     "@supabase/supabase-js": "^2.89.0",
     "chart.js": "^4.5.1",
     "docx": "^9.5.1",
+    "html2canvas": "^1.4.1",
     "idb": "^8.0.3",
     "jsbarcode": "^3.12.3",
     "quagga": "^0.12.1",

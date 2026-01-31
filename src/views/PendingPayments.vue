@@ -2,9 +2,11 @@
 import { ref, onMounted } from 'vue'
 import { supabase } from '../lib/supabase'
 import Swal from 'sweetalert2'
+import SaleDetailModal from '../components/SaleDetailModal.vue'
 
 const sales = ref([])
 const loading = ref(false)
+const selectedSale = ref(null)
 
 const loadPendingSales = async () => {
   loading.value = true
@@ -15,6 +17,7 @@ const loadPendingSales = async () => {
       total,
       created_at,
       payment_method,
+      *,
       clientes_por_cobrar!inner(customer_name)
     `)
     .eq('payment_method', 'por_cobrar')
@@ -81,9 +84,22 @@ onMounted(loadPendingSales)
         <button class="pay-btn" @click="collectPayment(sale.id)">
           Cobrar
         </button>
+        <button
+          class="receipt-btn"
+          @click="selectedSale = sale"
+        >
+          🧾 Boleta
+        </button>
       </div>
     </div>
   </div>
+
+  <SaleDetailModal
+    v-if="selectedSale"
+    :sale="selectedSale"
+    @close="selectedSale = null"
+  />
+
 </template>
 
 <style scoped>
@@ -170,4 +186,23 @@ h2 {
   background: #15803d;
   transform: translateY(-1px);
 }
+
+.receipt-btn {
+    background: #0b3c5d;
+    color: white;
+    border: none;
+    padding: 1px 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s ease;
+    margin: 4px;
+}
+
+.receipt-btn:hover {
+  background: #1fa2c1;
+  transform: translateY(-1px);
+}
+
 </style>
