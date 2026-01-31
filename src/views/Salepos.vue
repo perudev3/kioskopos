@@ -226,6 +226,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
     <PaymentModal
       v-if="showPayment"
       :total="total"
+      :paymentQR="selectedQR"
       v-model:method="paymentMethod"
       :loading="loading"
       @confirm="saveSale($event)"

@@ -5,6 +5,9 @@ const props = defineProps({
   total: Number,
   loading: Boolean,
   method: String,
+
+  /* ====== AGREGADO ====== */
+  paymentQR: Object
 });
 const emit = defineEmits(['update:method', 'confirm', 'close']);
 
@@ -53,6 +56,25 @@ const handleConfirm = () => {
         <option value="plin">Plin</option>
         <option value="por_cobrar">Por cobrar</option>
       </select>
+
+      <!-- ====== AGREGADO: QR YAPE / PLIN ====== -->
+      <div
+        v-if="(localMethod === 'yape' || localMethod === 'plin') && paymentQR"
+        class="qr-box"
+      >
+        <p class="qr-title">
+          Escanea con {{ localMethod.toUpperCase() }}
+        </p>
+
+        <img
+          :src="paymentQR.qr_url"
+          alt="QR Pago"
+          class="qr-img"
+        />
+
+        <p class="qr-name">{{ paymentQR.display_name }}</p>
+        <p class="qr-phone">{{ paymentQR.phone_number }}</p>
+      </div>
 
       <!-- FORMULARIO SOLO SI ES POR COBRAR -->
       <div v-if="localMethod === 'por_cobrar'" class="credit-form">
@@ -140,5 +162,28 @@ button.cancel {
   padding: 8px;
   border-radius: 6px;
   cursor: pointer;
+}
+
+/* ====== AGREGADO: ESTILO QR ====== */
+.qr-box {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px dashed #c7d2fe;
+}
+.qr-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.qr-img {
+  max-width: 160px;
+  margin: 6px auto;
+}
+.qr-name {
+  font-weight: 600;
+}
+.qr-phone {
+  font-size: 14px;
+  color: #555;
 }
 </style>

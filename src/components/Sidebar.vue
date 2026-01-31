@@ -96,6 +96,10 @@ onMounted(() => {
   Cobros
 </button>
 
+<button v-if="role !== 'admin'" @click="go('/settings')" class="btn">
+  Configuración
+</button>
+
 
       <button v-if="role === 'admin'" @click="go('/users')" class="btn">
         Usuarios

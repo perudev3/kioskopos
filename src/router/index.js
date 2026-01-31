@@ -54,7 +54,12 @@ const routes = [
         path: '/paymend-pending',
         component: () => import('../views/PendingPayments.vue'),
         meta: { title: 'Pagos Pendientes' },
-      },       
+      },    
+      {
+        path: '/settings',
+        component: () => import('../views/Settings.vue'),
+        meta: { title: 'Configuraciones' },
+      },          
     ],
   },
 ];
