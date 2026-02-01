@@ -26,7 +26,14 @@ defineEmits(['view']);
           <td>{{ s.payment_method }}</td>
           <td>
             <button @click="$emit('view', s)">Ver</button>
+            <button 
+              @click="$emit('cancel', s.id)" 
+              style="background:#ef4444;color:white;padding:4px 8px;border:none;border-radius:6px;cursor:pointer"
+            >
+              Cancelar
+            </button>
           </td>
+
         </tr>
       </tbody>
     </table>

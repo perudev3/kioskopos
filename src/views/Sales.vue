@@ -30,28 +30,82 @@ const exportBoleta = async () => {
 }
 
 /* =========================
-   CARGAR VENTAS
+   CARGAR VENTAS CORRECTO
 ========================= */
 const loadSales = async () => {
   loading.value = true;
 
-  const { data: auth } = await supabase.auth.getUser();
-  user.value = auth.user;
+  try {
+    // Obtener usuario actual
+    const { data: auth } = await supabase.auth.getUser();
+    user.value = auth.user;
 
-  let query = supabase
-    .from('sales')
-    .select('*')
-    .eq('user_id', user.value.id)
-    .neq('payment_method', 'por_cobrar')   /* ✅ Excluir ventas "por cobrar" */
-    .order('created_at', { ascending: false });
+    // Traer items con info de venta y producto
+    let query = supabase
+      .from('sale_items')
+      .select(`
+        sale_id,
+        quantity,
+        price,
+        subtotal,
+        sales(id, total, payment_method, created_at, status),
+        product:product_id(price)
+      `)
+      .eq('sales.user_id', user.value.id)
+      .neq('sales.payment_method', 'por_cobrar');
 
-  if (fromDate.value) query = query.gte('created_at', fromDate.value);
-  if (toDate.value) query = query.lte('created_at', toDate.value + 'T23:59:59');
+    // Filtrar por fechas
+    if (fromDate.value) query = query.gte('sales.created_at', fromDate.value);
+    if (toDate.value) query = query.lte('sales.created_at', toDate.value + 'T23:59:59');
 
-  const { data } = await query;
-  sales.value = data || [];
+    const { data, error } = await query;
 
-  loading.value = false;
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      sales.value = [];
+      return;
+    }
+
+    // Agrupar items por venta
+    const grouped = {};
+    data.forEach(item => {
+      const saleId = item.sale_id;
+
+      // Inicializar venta si no existe
+      if (!grouped[saleId]) {
+        grouped[saleId] = {
+          ...item.sales,
+          items: [],
+          net_profit: 0,
+          profit_sale: 0
+        };
+      }
+
+      const quantity = Number(item.quantity || 0);
+      const salePrice = Number(item.price || 0);       // precio de venta
+      const basePrice = Number(item.product?.price || 0); // precio base
+
+      const subtotal = salePrice * quantity;
+      const net = (salePrice - basePrice) * quantity;
+      const remaining = subtotal - net; // lo que queda aparte de la ganancia neta
+
+      grouped[saleId].items.push(item);
+      grouped[saleId].net_profit += net;
+      grouped[saleId].profit_sale += remaining;
+    });
+
+    // Convertir objeto a array y ordenar por fecha descendente
+    sales.value = Object.values(grouped).sort(
+      (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    );
+
+  } catch (err) {
+    console.error('Error cargando ventas: ', err);
+    alert('Error cargando ventas: ' + err.message);
+    sales.value = [];
+  } finally {
+    loading.value = false;
+  }
 };
 
 onMounted(loadSales);
@@ -62,8 +116,12 @@ onMounted(loadSales);
 const totalSales = computed(() => sales.value.length);
 
 const totalAmount = computed(() =>
-  sales.value.reduce((sum, s) => sum + Number(s.total), 0)
+  sales.value.reduce((sum, s) => {
+    const saleTotal = s.items.reduce((subtotal, i) => subtotal + Number(i.price) * Number(i.quantity), 0);
+    return sum + saleTotal;
+  }, 0)
 );
+
 
 /* =========================
    GANANCIA NETA
@@ -109,6 +167,25 @@ const transferProfitToCapital = async () => {
   profitToCapital.value = ''
   showProfitModal.value = false
 }
+
+const cancelSale = async (saleId) => {
+  const confirmCancel = confirm('¿Deseas cancelar esta venta? Esto permitirá crear una nueva venta.');
+  if (!confirmCancel) return;
+
+  const { error } = await supabase
+    .from('sales')
+    .update({ status: 'cancelled' })
+    .eq('id', saleId);
+
+  if (error) {
+    alert('No se pudo cancelar la venta: ' + error.message);
+    return;
+  }
+
+  await loadSales(); // recargar tabla
+  alert('Venta cancelada exitosamente.');
+};
+
 </script>
 
 <template>
@@ -127,6 +204,7 @@ const transferProfitToCapital = async () => {
       <div>Ventas: <strong>{{ totalSales }}</strong></div>
       <div>Total: <strong>S/ {{ totalAmount.toFixed(2) }}</strong></div>
       <div>Ganancia neta: <strong>S/ {{ totalNetProfit.toFixed(2) }}</strong></div>
+      <div>Ganancia venta: <strong>S/ {{ sales.reduce((sum, s) => sum + s.profit_sale, 0).toFixed(2) }}</strong></div>
 
       <button
         style="margin-left: 8px"
@@ -144,6 +222,7 @@ const transferProfitToCapital = async () => {
         :sales="sales"
         :loading="loading"
         @view="selectedSale = $event"
+        @cancel="cancelSale"
       />
     </div>
 
@@ -152,6 +231,7 @@ const transferProfitToCapital = async () => {
       v-if="selectedSale"
       :sale="selectedSale"
       @close="selectedSale = null"
+      @cancel="cancelSale"
     />
   </div>
 

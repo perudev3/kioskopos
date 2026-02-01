@@ -16,6 +16,18 @@ const loading = ref(false)
 const selectedQR = ref(null)
 
 
+const showProductListFallback = ref(false)
+
+const openProductFallback = () => {
+  stopScanner()
+  showProductListFallback.value = true
+}
+
+const closeProductFallback = () => {
+  showProductListFallback.value = false
+}
+
+
 const paymentQRs = ref([])
 
 const loadPaymentQRs = async () => {
@@ -260,9 +272,16 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
     <div v-if="showScanner" class="modal-backdrop">
       <div class="modal scanner">
         <div id="scanner" class="scanner-view"></div>
+
         <button class="btn-cancel" @click="stopScanner">Cancelar</button>
+
+        <!-- 🔑 NUEVO BOTÓN -->
+        <button class="btn-secondary" @click="openProductFallback">
+          Mostrar productos
+        </button>
       </div>
     </div>
+
 
     <PaymentModal
       v-if="showPayment"
@@ -273,6 +292,39 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
       @confirm="saveSale($event)"
       @close="showPayment = false"
     />
+
+    <div v-if="showProductListFallback" class="modal-backdrop">
+      <div class="modal large">
+        <div class="modal-header">
+          <h3>Selecciona un producto</h3>
+          <button @click="closeProductFallback">✕</button>
+        </div>
+
+        <div class="product-grid">
+          <div
+            v-for="p in products"
+            :key="p.id"
+            class="product-card"
+          >
+            <div class="img-container">
+              <img v-if="p.image_url" :src="p.image_url" />
+            </div>
+
+            <div class="name">{{ p.name }}</div>
+            <div class="price">S/ {{ p.sale_price }}</div>
+            <div class="stock">Stock: {{ p.stock }}</div>
+
+            <button
+              class="btn-add"
+              @click="addToCart(p)"
+            >
+              Agregar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -572,5 +624,15 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   margin-top: 4px;
 }
 
+.btn-secondary {
+  background: linear-gradient(180deg, #0b3c5d, #1f5f8b);
+    color: #ffffff;
+    border: none;
+    padding: 12px;
+    border-radius: 14px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
 
 </style>

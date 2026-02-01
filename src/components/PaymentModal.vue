@@ -105,11 +105,12 @@ const handleConfirm = () => {
   display: flex;
   justify-content: center;
   align-items: center;
+  margin-top: 60px;
 }
 .modal {
   background: white;
   padding: 20px;
-  width: 320px;
+  width: 360px;           /* 🔑 antes 320 */
   border-radius: 12px;
   text-align: center;
   display: flex;
@@ -166,24 +167,54 @@ button.cancel {
 
 /* ====== AGREGADO: ESTILO QR ====== */
 .qr-box {
-  margin-top: 8px;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px dashed #c7d2fe;
+  margin-top: 10px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 2px dashed #6366f1;
+  background: #eef2ff;
 }
+
 .qr-title {
   font-weight: 700;
   margin-bottom: 6px;
+  color: black;
 }
 .qr-img {
-  max-width: 160px;
-  margin: 6px auto;
+  width: 100%;
+  max-width: 260px;       /* 🔑 tamaño real de escaneo */
+  height: auto;
+  margin: 12px auto;
 }
+
 .qr-name {
   font-weight: 600;
+  color: black;
 }
 .qr-phone {
   font-size: 14px;
   color: #555;
 }
+
+@media (max-width: 480px) {
+  .modal {
+    width: 92%;
+  }
+
+  .qr-img {
+    max-width: 280px;
+  }
+}
+
+
+/* 🔑 Permitir scroll dentro del modal */
+.modal {
+  max-height: 90vh;        /* no se sale de la pantalla */
+  overflow-y: auto;        /* habilita scroll vertical */
+}
+
+/* Scroll suave en móviles */
+.modal {
+  -webkit-overflow-scrolling: touch;
+}
+
 </style>
