@@ -86,13 +86,22 @@ const saveQR = async (method) => {
 
     const qr_url = await uploadQR(method)
 
-    await supabase.from('payment_qrs').upsert({
-      user_id: userId.value,
-      method,
-      display_name: form.value[method].display_name,
-      phone_number: form.value[method].phone_number,
-      qr_url
-    })
+    const { error } = await supabase
+      .from('payment_qrs')
+      .upsert(
+        {
+          user_id: userId.value,
+          method,
+          display_name: form.value[method].display_name,
+          phone_number: form.value[method].phone_number,
+          qr_url: qr_url
+        },
+        {
+          onConflict: 'user_id,method'
+        }
+      )
+
+    if (error) throw error
 
     form.value[method].qr_url = qr_url
     message.value = `✔ QR de ${method.toUpperCase()} guardado`
@@ -103,6 +112,7 @@ const saveQR = async (method) => {
     loading.value = false
   }
 }
+
 </script>
 
 <template>
