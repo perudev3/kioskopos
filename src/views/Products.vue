@@ -151,9 +151,15 @@ const unit_type = ref('UNIT'); // ✅ NUEVO
 const file = ref(null);
 
 const imageFile = ref(null);
-const imagePreview = computed(() =>
-  imageFile.value ? URL.createObjectURL(imageFile.value) : null
-);
+const imagePreview = computed(() => {
+  if (imageFile.value) return URL.createObjectURL(imageFile.value);
+  if (editingProduct.value && editingProduct.value.image_url) return editingProduct.value.image_url;
+  return null;
+});
+
+// Al guardar producto
+
+
 
 const onFileChange = (e) => {
   imageFile.value = e.target.files[0];
@@ -226,13 +232,9 @@ const saveProduct = async () => {
   }
 
   // 🔥 SUBIR / ACTUALIZAR IMAGEN
-  if (imageFile.value) {
+   if (imageFile.value) {
     const imageUrl = await uploadProductImage(imageFile.value, productId);
-
-    await supabase
-      .from('products')
-      .update({ image_url: imageUrl })
-      .eq('id', productId);
+    await supabase.from('products').update({ image_url: imageUrl + '?t=' + Date.now() }).eq('id', productId);
   }
 
   // 🔄 RESET
@@ -521,8 +523,9 @@ const uploadProductImage = async (file, productId) => {
         <input
           type="file"
           accept="image/*"
-          @change="e => imageFile.value = e.target.files[0]"
+          @change="onFileChange"
         />
+
 
 
         <img v-if="imagePreview" :src="imagePreview" class="preview-img" />
