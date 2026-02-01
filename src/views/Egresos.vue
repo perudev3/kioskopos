@@ -14,6 +14,7 @@ const categoria = ref('')
 
 const loading = ref(false)
 const user = ref(null)
+const capitalMonto = ref('')
 
 /* =========================
    CARGAR DATOS
@@ -21,23 +22,12 @@ const user = ref(null)
 const loadData = async () => {
   loading.value = true
 
-  const { data: auth, error: authError } = await supabase.auth.getUser()
-  if (authError || !auth?.user) {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth?.user) {
     loading.value = false
     return
   }
-
   user.value = auth.user
-
-  /* ---- VENTAS ---- */
-  const { data: ventasData, error: ventasError } = await supabase
-    .from('sales')
-    .select('total')
-    .eq('user_id', user.value.id)
-
-  if (!ventasError) {
-    ventas.value = ventasData || []
-  }
 
   /* ---- EGRESOS ---- */
   const { data: egresosData, error: egresosError } = await supabase
@@ -46,21 +36,114 @@ const loadData = async () => {
     .eq('user_id', user.value.id)
     .order('created_at', { ascending: false })
 
-  if (!egresosError) {
-    egresos.value = egresosData || []
+  if (!egresosError) egresos.value = egresosData || []
+
+  /* ---- VENTAS ---- */
+  const { data: ventasData, error: ventasError } = await supabase
+    .from('sales')
+    .select('*, sale_items(*, product:product_id(price))')
+    .eq('user_id', user.value.id)
+    .neq('payment_method', 'por_cobrar') // Excluir por cobrar
+    .neq('status', 'cancelled')          // Excluir ventas canceladas
+
+  if (!ventasError && ventasData) {
+    ventas.value = ventasData
+
+    // Calcular ganancia neta por venta
+    ventas.value.forEach(sale => {
+      let net_profit = 0
+      if (sale.sale_items) {
+        sale.sale_items.forEach(item => {
+          const qty = Number(item.quantity || 0)
+          const precioVenta = Number(item.price || 0)
+          const precioBase = Number(item.product?.price || 0)
+          net_profit += (precioVenta - precioBase) * qty
+        })
+      }
+      sale.net_profit = Math.round(net_profit * 100) / 100
+    })
   }
 
   loading.value = false
 }
 
-onMounted(loadData)
-
 /* =========================
-   CÁLCULOS
+   CÁLCULOS CORRECTOS
 ========================= */
+
+// Ganancia neta de todas las ventas válidas
 const totalVentas = computed(() =>
-  ventas.value.reduce((sum, v) => sum + Number(v.total || 0), 0)
+  ventas.value
+    .filter(v => v.status !== 'cancelled' && v.payment_method !== 'por_cobrar')
+    .reduce((sum, sale) => {
+      let venta = 0
+      if (sale.sale_items) {
+        sale.sale_items.forEach(item => {
+          const qty = Number(item.quantity || 0)
+          const precioVenta = Number(item.price || 0)
+          venta += precioVenta * qty
+        })
+      }
+      return sum + venta
+    }, 0)
 )
+
+// Ganancia de ventas (precio_venta - precio_base)
+const totalGananciaVentas = computed(() =>
+  ventas.value
+    .filter(v => v.status !== 'cancelled' && v.payment_method !== 'por_cobrar')
+    .reduce((sum, sale) => {
+      let ganancia = 0
+      if (sale.sale_items) {
+        sale.sale_items.forEach(item => {
+          const qty = Number(item.quantity || 0)
+          const precioVenta = Number(item.price || 0)
+          const precioBase = Number(item.product?.price || 0)
+          ganancia += (precioVenta - precioBase) * qty
+        })
+      }
+      return sum + ganancia
+    }, 0)
+)
+
+// Total egresos registrados (tipo 'egreso')
+const totalEgresos = computed(() =>
+  egresos.value
+    .filter(e => e.tipo === 'egreso')
+    .reduce((sum, e) => sum + Number(e.monto || 0), 0)
+)
+
+// Capital inicial o agregado (tipo capital)
+const totalCapital = computed(() =>
+  egresos.value
+    .filter(e => e.tipo === 'capital')
+    .reduce((sum, e) => sum + Number(e.monto || 0), 0)
+)
+
+// Capital ventas disponible = ganancia neta de ventas - egresos
+const capitalDisponible = computed(() =>
+  Math.round(( (totalVentas.value - totalGananciaVentas.value) - totalEgresos.value ) * 100) / 100
+)
+
+
+// Ganancia neta de ventas (precio_venta - precio_base)
+const totalGanancia = computed(() =>
+  ventas.value
+    .filter(v => v.status !== 'cancelled' && v.payment_method !== 'por_cobrar')
+    .reduce((sum, sale) => {
+      let ganancia = 0
+      if (sale.sale_items) {
+        sale.sale_items.forEach(item => {
+          const qty = Number(item.quantity || 0)
+          const precioVenta = Number(item.price || 0)
+          const precioBase = Number(item.product?.price || 0)
+          ganancia += (precioVenta - precioBase) * qty
+        })
+      }
+      return sum + ganancia
+    }, 0)
+)
+
 
 /* =========================
    REGISTRAR EGRESO
@@ -72,7 +155,6 @@ const saveEgreso = async () => {
   }
 
   const montoNum = Number(monto.value)
-
   if (montoNum <= 0) {
     alert('El monto debe ser mayor a cero')
     return
@@ -101,31 +183,6 @@ const saveEgreso = async () => {
 
   loadData()
 }
-
-
-/* =========================
-   CAPITAL
-========================= */
-const capitalMonto = ref('')
-
-const totalCapital = computed(() =>
-  egresos.value
-    .filter(e => e.tipo === 'capital')
-    .reduce((sum, e) => sum + Number(e.monto || 0), 0)
-)
-
-/* =========================
-   AJUSTE DE CÁLCULOS
-========================= */
-const totalEgresos = computed(() =>
-  egresos.value
-    .filter(e => e.tipo === 'egreso')
-    .reduce((sum, e) => sum + Number(e.monto || 0), 0)
-)
-
-const capitalDisponible = computed(() =>
-  totalCapital.value + totalVentas.value - totalEgresos.value
-)
 
 /* =========================
    REGISTRAR CAPITAL
@@ -159,14 +216,15 @@ const saveCapital = async () => {
   loadData()
 }
 
-
 /* =========================
    MODALES
 ========================= */
 const showEgresoModal = ref(false)
 const showCapitalModal = ref(false)
 
+onMounted(loadData)
 </script>
+
 
 <template>
   <div class="egresos-page">
@@ -175,7 +233,7 @@ const showCapitalModal = ref(false)
     <!-- RESUMEN -->
     <div class="summary">
       <div>
-        Ventas
+        Ventas Total
         <strong>S/ {{ totalVentas.toFixed(2) }}</strong>
       </div>
 
@@ -185,7 +243,7 @@ const showCapitalModal = ref(false)
       </div>
 
       <div class="capital">
-        Capital disponible
+        Capital ventas disponible
         <strong>S/ {{ capitalDisponible.toFixed(2) }}</strong>
       </div>
     </div>
