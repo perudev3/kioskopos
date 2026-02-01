@@ -3,7 +3,7 @@ defineProps({
   sales: Array,
   loading: Boolean,
 });
-defineEmits(['view']);
+defineEmits(['view', 'cancel']); // ✅ emitimos view y cancel
 </script>
 
 <template>
@@ -16,24 +16,26 @@ defineEmits(['view']);
           <th>Fecha</th>
           <th>Total</th>
           <th>Pago</th>
+          <th>Estado</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="s in sales" :key="s.id">
-          <td>{{ new Date(s.created_at).toLocaleString() }}</td>
-          <td>S/ {{ s.total }}</td>
+          <td>{{ s.created_at ? new Date(s.created_at).toLocaleString() : 'Sin fecha' }}</td>
+          <td>S/ {{ s.total ?? 0 }}</td>
           <td>{{ s.payment_method }}</td>
-          <td>
+          <td>{{ s.status || 'activo' }}</td>
+          <td style="display:flex; gap:4px;">
             <button @click="$emit('view', s)">Ver</button>
             <button 
+              v-if="s.status !== 'cancelled'"
               @click="$emit('cancel', s.id)" 
               style="background:#ef4444;color:white;padding:4px 8px;border:none;border-radius:6px;cursor:pointer"
             >
               Cancelar
             </button>
           </td>
-
         </tr>
       </tbody>
     </table>

@@ -191,31 +191,57 @@ const saveProduct = async () => {
     data: { user: authUser },
   } = await supabase.auth.getUser();
 
+  let productId = editingProduct.value?.id;
+
+  // 🔹 ACTUALIZAR
   if (editingProduct.value) {
-    await supabase.from('products').update({
-      name: name.value,
-      price: price.value,
-      sale_price: sale_price.value,
-      stock: stock.value,
-      unit_type: unit_type.value, // ✅
-    }).eq('id', editingProduct.value.id);
-  } else {
-    await supabase.from('products').insert({
-      name: name.value,
-      price: price.value,
-      sale_price: sale_price.value,
-      stock: stock.value,
-      unit_type: unit_type.value, // ✅
-      user_id: authUser.id,
-      barcode: 'KP-' + Date.now(),
-    });
+    await supabase
+      .from('products')
+      .update({
+        name: name.value,
+        price: price.value,
+        sale_price: sale_price.value,
+        stock: stock.value,
+        unit_type: unit_type.value,
+      })
+      .eq('id', productId);
+  }
+  // 🔹 CREAR
+  else {
+    const { data } = await supabase
+      .from('products')
+      .insert({
+        name: name.value,
+        price: price.value,
+        sale_price: sale_price.value,
+        stock: stock.value,
+        unit_type: unit_type.value,
+        user_id: authUser.id,
+        barcode: 'KP-' + Date.now(),
+      })
+      .select()
+      .single();
+
+    productId = data.id;
   }
 
+  // 🔥 SUBIR / ACTUALIZAR IMAGEN
+  if (imageFile.value) {
+    const imageUrl = await uploadProductImage(imageFile.value, productId);
+
+    await supabase
+      .from('products')
+      .update({ image_url: imageUrl })
+      .eq('id', productId);
+  }
+
+  // 🔄 RESET
   name.value = '';
   price.value = '';
   sale_price.value = '';
   stock.value = '';
   unit_type.value = 'UNIT';
+  imageFile.value = null;
   editingProduct.value = null;
   showModal.value = false;
 
@@ -364,6 +390,63 @@ const loadProducts = async () => {
 };
 
 
+/* =========================
+   ELIMINAR PRODUCTO
+========================= */
+const deleteProduct = async (product) => {
+  const confirm = await Swal.fire({
+    title: '¿Eliminar producto?',
+    text: `Se eliminará "${product.name}" definitivamente`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Sí, eliminar',
+    cancelButtonText: 'Cancelar',
+    confirmButtonColor: '#ef4444',
+  });
+
+  if (!confirm.isConfirmed) return;
+
+  const { error } = await supabase
+    .from('products')
+    .delete()
+    .eq('id', product.id);
+
+  if (error) {
+    Swal.fire('Error', 'No se pudo eliminar el producto', 'error');
+    console.error(error);
+    return;
+  }
+
+  Swal.fire('Eliminado', 'Producto eliminado correctamente', 'success');
+
+  loadProducts(); // 🔄 recargar lista
+};
+
+
+const uploadProductImage = async (file, productId) => {
+  if (!file) return null;
+
+  const ext = file.name.split('.').pop();
+  const filePath = `${productId}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from('products')
+    .upload(filePath, file, {
+      upsert: true,
+      contentType: file.type,
+    });
+
+  if (error) throw error;
+
+  const { data } = supabase.storage
+    .from('products')
+    .getPublicUrl(filePath);
+
+  return data.publicUrl;
+};
+
+
+
 </script>
 
 
@@ -435,7 +518,12 @@ const loadProducts = async () => {
           <option value="UNIT">Por unidad</option>
           <option value="WEIGHT">Por peso (kilos)</option>
         </select>
-        <input type="file" accept="image/*" @change="onFileChange" />
+        <input
+          type="file"
+          accept="image/*"
+          @change="e => imageFile.value = e.target.files[0]"
+        />
+
 
         <img v-if="imagePreview" :src="imagePreview" class="preview-img" />
 

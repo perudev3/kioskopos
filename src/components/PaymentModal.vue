@@ -76,6 +76,14 @@ const handleConfirm = () => {
         <p class="qr-phone">{{ paymentQR.phone_number }}</p>
       </div>
 
+      <div v-if="localMethod !== 'por_cobrar'" class="optional-customer-name">
+        <input
+          type="text"
+          placeholder="Nombre del cliente (opcional)"
+          v-model="customerName"
+        />
+      </div>
+
       <!-- FORMULARIO SOLO SI ES POR COBRAR -->
       <div v-if="localMethod === 'por_cobrar'" class="credit-form">
         <input type="text" placeholder="Nombre del cliente *" v-model="customerName" />
@@ -215,6 +223,11 @@ button.cancel {
 /* Scroll suave en móviles */
 .modal {
   -webkit-overflow-scrolling: touch;
+}
+
+.optional-customer-name input {
+  margin-top: 8px;
+  margin-bottom: 12px;
 }
 
 </style>
