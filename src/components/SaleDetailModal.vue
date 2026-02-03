@@ -60,7 +60,7 @@ const exportPNG = async () => {
 
         <div class="row">
           <span>Método</span>
-          <span>{{ sale.payment_method }}</span>
+          <span>{{ sale.payment_method === 'cash' ? 'Efectivo' : sale.payment_method }}</span>
         </div>
 
         <hr />

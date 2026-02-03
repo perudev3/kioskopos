@@ -61,9 +61,16 @@ const loadSales = async () => {
       return;
     }
 
-    // Filtrar por fechas si aplica
-    if (fromDate.value) data = data.filter(s => new Date(s.created_at) >= new Date(fromDate.value));
-    if (toDate.value) data = data.filter(s => new Date(s.created_at) <= new Date(toDate.value + 'T23:59:59'));
+    // Filtrar por fechas si aplica (rango exacto por día)
+    if (fromDate.value) {
+      const startDate = new Date(fromDate.value + 'T00:00:00');
+      data = data.filter(s => new Date(s.created_at) >= startDate);
+    }
+
+    if (toDate.value) {
+      const endDate = new Date(toDate.value + 'T23:59:59.999');
+      data = data.filter(s => new Date(s.created_at) <= endDate);
+    }
 
     // Calcular ganancias y totales por venta
     data.forEach(sale => {
@@ -81,9 +88,12 @@ const loadSales = async () => {
           profit_sale += remaining;
         });
       }
-      sale.net_profit = net_profit;
-      sale.profit_sale = profit_sale;
-      sale.total = sale.sale_items?.reduce((acc, i) => acc + Number(i.price) * Number(i.quantity), 0) || 0;
+      sale.net_profit = Math.floor(net_profit * 10) / 10;
+      sale.profit_sale = Math.floor(profit_sale * 10) / 10;
+      sale.total = Math.floor(
+        (sale.sale_items?.reduce((acc, i) => acc + Number(i.price) * Number(i.quantity), 0) || 0) * 10
+      ) / 10;
+
     });
 
     sales.value = data;
