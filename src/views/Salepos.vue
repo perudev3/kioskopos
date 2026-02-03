@@ -14,6 +14,7 @@ const paymentMethod = ref('cash')
 const user = ref(null)
 const loading = ref(false)
 const selectedQR = ref(null)
+const productFilter = ref('')
 
 
 const showProductListFallback = ref(false)
@@ -26,6 +27,14 @@ const openProductFallback = () => {
 const closeProductFallback = () => {
   showProductListFallback.value = false
 }
+
+const filteredProducts = computed(() => {
+  if (!productFilter.value) return products.value
+  return products.value.filter(p =>
+    p.name.toLowerCase().includes(productFilter.value.toLowerCase())
+  )
+})
+
 
 
 const paymentQRs = ref([])
@@ -300,9 +309,18 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
           <button @click="closeProductFallback">✕</button>
         </div>
 
+            <!-- INPUT DE FILTRO -->
+        <input
+          type="text"
+          class="filter-input"
+          placeholder="Buscar producto..."
+          v-model="productFilter"
+        />
+
+
         <div class="product-grid">
           <div
-            v-for="p in products"
+            v-for="p in filteredProducts"
             :key="p.id"
             class="product-card"
           >
