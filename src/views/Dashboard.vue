@@ -19,10 +19,11 @@
     <!-- Tarjetas estadísticas -->
     <div class="dashboard-grid">
       <StatCard
-        title="Resultado financiero (S/)"
-        :value="totalProfit"
+        title="Ganancia venta (S/)"
+        :value="realTotalProfit.toFixed(2)"
         color="success"
       />
+
 
       <StatCard
         title="Total egresos registrados (S/)"
@@ -187,10 +188,12 @@ const loadDashboard = async () => {
 
   const { data: sales = [] } = await supabase
     .from('sales')
-    .select('*, sale_items(*, product:product_id(price, sale_price))')
-      .eq('user_id', user.id)
-      .neq('payment_method', 'por_cobrar') // ✅ Excluir por cobrar
-      .order('created_at', { ascending: false });
+    .select('*, sale_items(*, product:product_id(price))')
+    .eq('user_id', user.id)
+    .neq('payment_method', 'por_cobrar')
+    .neq('status', 'cancelled')
+    .order('created_at', { ascending: false });
+
 
   const { data: egresos = [] } = await supabase
     .from('egresos')
@@ -227,15 +230,25 @@ const loadDashboard = async () => {
     totalSales - totalRealExpenses
   ).toFixed(2);
 
-  /* =========================
-     GANANCIA REAL (SOLO UTILIDAD)
-  ========================= */
-  realProfitTotal.value = sales.reduce((sum, s) => {
-    const base = Number(s.base_price || 0);
-    const total = Number(s.total || 0);
-    const profit = total - base;
-    return sum + (profit > 0 ? profit : 0);
-  }, 0);
+/* =========================
+   GANANCIA VENTA (igual que en Sales)
+========================= */
+realProfitTotal.value = sales.reduce((sum, sale) => {
+  let totalProfitSale = 0;
+
+  if (sale.sale_items && sale.sale_items.length) {
+    sale.sale_items.forEach(item => {
+      const qty = Number(item.quantity || 0);
+      const price = Number(item.price || 0);      // precio de venta
+      const base = Number(item.product?.price || 0); // costo real
+
+      totalProfitSale += (price * qty) - ((price - base) * qty);
+    });
+  }
+
+  return sum + totalProfitSale;
+}, 0);
+
 
   /* =========================
      ÚLTIMAS VENTAS
