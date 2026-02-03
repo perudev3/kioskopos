@@ -1,6 +1,6 @@
 <script setup>
 import html2canvas from 'html2canvas'
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { supabase } from '../lib/supabase';
 
 import SalesTable from '../components/SalesTable.vue';
@@ -9,6 +9,11 @@ import SaleDetailModal from '../components/SaleDetailModal.vue';
 const sales = ref([]);
 const selectedSale = ref(null);
 const receiptRef = ref(null);
+
+const totalSales = ref(0);
+const totalAmount = ref(0);
+const totalNetProfit = ref(0);
+const totalProfitSale = ref(0);
 
 const fromDate = ref('');
 const toDate = ref('');
@@ -39,43 +44,79 @@ const exportBoleta = async (sale) => {
 ========================= */
 const loadSales = async () => {
   loading.value = true;
-
   try {
-    // Usuario actual
-    const { data: auth } = await supabase.auth.getUser();
-    user.value = auth.user;
+    // 1️⃣ Obtener usuario
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError) throw authError;
+    user.value = authData?.user;
 
-    if (!user.value) return;
-
-    // Traer ventas y sus items
-    let { data, error } = await supabase
-      .from('sales')
-      .select('*, sale_items(*, product:product_id(price))')
-      .eq('user_id', user.value.id)
-      .neq('payment_method', 'por_cobrar') // ✅ Excluir por cobrar
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    if (!data || data.length === 0) {
+    if (!user.value) {
+      alert('Usuario no autenticado');
       sales.value = [];
+      loading.value = false;
       return;
     }
 
-    // Filtrar por fechas si aplica (rango exacto por día)
+    // 2️⃣ Obtener resumen general
+    const { data: summary, error: summaryError } = await supabase
+      .rpc('get_sales_summary', { p_user_id: user.value.id });
+
+    if (summaryError) throw summaryError;
+
+    const resume = summary?.[0] || {
+      total_sales: 0,
+      total_amount: 0,
+      total_net_profit: 0,
+      total_profit_sale: 0
+    };
+
+    totalSales.value = resume.total_sales;
+    totalAmount.value = Number(resume.total_amount || 0);
+    totalNetProfit.value = Number(resume.total_net_profit || 0);
+    totalProfitSale.value = Number(resume.total_profit_sale || 0);
+
+    // 3️⃣ Traer ventas
+    let { data: salesData, error } = await supabase
+      .from('sales')
+      .select('*, sale_items(*, product:product_id(price))')
+      .eq('user_id', user.value.id)
+      .neq('payment_method', 'por_cobrar')
+      .neq('status', 'cancelled')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Filtrar por fechas usando UTC
     if (fromDate.value) {
-      const startDate = new Date(fromDate.value + 'T00:00:00');
-      data = data.filter(s => new Date(s.created_at) >= startDate);
+      salesData = salesData.filter(sale => {
+        const saleUTC = new Date(sale.created_at);
+        const saleDayUTC = saleUTC.getUTCFullYear() + '-' +
+                          String(saleUTC.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                          String(saleUTC.getUTCDate()).padStart(2, '0');
+        return saleDayUTC >= fromDate.value;
+      });
     }
 
     if (toDate.value) {
-      const endDate = new Date(toDate.value + 'T23:59:59.999');
-      data = data.filter(s => new Date(s.created_at) <= endDate);
+      salesData = salesData.filter(sale => {
+        const saleUTC = new Date(sale.created_at);
+        const saleDayUTC = saleUTC.getUTCFullYear() + '-' +
+                          String(saleUTC.getUTCMonth() + 1).padStart(2, '0') + '-' +
+                          String(saleUTC.getUTCDate()).padStart(2, '0');
+        return saleDayUTC <= toDate.value;
+      });
     }
 
-    // Calcular ganancias y totales por venta
-    data.forEach(sale => {
+
+    // 5️⃣ Calcular totales y ganancias solo sobre las ventas filtradas
+    let totalAmountCalc = 0;
+    let totalNetProfitCalc = 0;
+    let totalProfitSaleCalc = 0;
+
+    salesData.forEach(sale => {
       let net_profit = 0;
       let profit_sale = 0;
+
       if (sale.sale_items) {
         sale.sale_items.forEach(item => {
           const qty = Number(item.quantity || 0);
@@ -88,45 +129,39 @@ const loadSales = async () => {
           profit_sale += remaining;
         });
       }
-      sale.net_profit = Math.floor(net_profit * 10) / 10;
-      sale.profit_sale = Math.floor(profit_sale * 10) / 10;
-      sale.total = Math.floor(
-        (sale.sale_items?.reduce((acc, i) => acc + Number(i.price) * Number(i.quantity), 0) || 0) * 10
-      ) / 10;
 
+      sale.net_profit = Math.round(net_profit * 100) / 100;
+      sale.profit_sale = Math.round(profit_sale * 100) / 100;
+      sale.total = Math.round(
+        (sale.sale_items?.reduce((acc, i) => acc + Number(i.price) * Number(i.quantity), 0) || 0) * 100
+      ) / 100;
+
+      totalAmountCalc += sale.total;
+      totalNetProfitCalc += sale.net_profit;
+      totalProfitSaleCalc += sale.profit_sale;
     });
 
-    sales.value = data;
+    sales.value = salesData;
+    totalSales.value = salesData.length;
+    totalAmount.value = totalAmountCalc;
+    totalNetProfit.value = totalNetProfitCalc;
+    totalProfitSale.value = totalProfitSaleCalc;
 
   } catch (err) {
     console.error('Error cargando ventas:', err);
     alert('Error cargando ventas: ' + err.message);
     sales.value = [];
+    totalSales.value = 0;
+    totalAmount.value = 0;
+    totalNetProfit.value = 0;
+    totalProfitSale.value = 0;
   } finally {
     loading.value = false;
   }
 };
 
+
 onMounted(loadSales);
-
-/* =========================
-   TOTALES
-========================= */
-const totalSales = computed(() =>
-  sales.value.filter(s => s.status !== 'cancelled').length
-);
-
-const totalAmount = computed(() =>
-  sales.value
-    .filter(s => s.status !== 'cancelled')
-    .reduce((sum, s) => sum + Number(s.total || 0), 0)
-);
-
-const totalNetProfit = computed(() =>
-  sales.value
-    .filter(s => s.status !== 'cancelled')
-    .reduce((sum, s) => sum + Number(s.net_profit || 0), 0)
-);
 
 /* =========================
    GANANCIA A CAPITAL
@@ -170,6 +205,7 @@ const cancelSale = async (saleId) => {
 };
 </script>
 
+
 <template>
   <div class="reports">
     <h1>📊 Reporte de Ventas</h1>
@@ -186,9 +222,12 @@ const cancelSale = async (saleId) => {
       <div>Ventas: <strong>{{ totalSales }}</strong></div>
       <div>Total: <strong>S/ {{ totalAmount.toFixed(2) }}</strong></div>
       <div>Ganancia neta: <strong>S/ {{ totalNetProfit.toFixed(2) }}</strong></div>
-      <div>Ganancia venta: <strong>S/ {{ sales.reduce((sum, s) => sum + s.profit_sale, 0).toFixed(2) }}</strong></div>
-      <button style="margin-left: 8px" @click="showProfitModal = true">↪ Pasar a capital</button>
+      <div>Ganancia venta: <strong>S/ {{ totalProfitSale.toFixed(2) }}</strong></div>
+      <button style="margin-left: 8px" @click="showProfitModal = true">
+        ↪ Pasar a capital
+      </button>
     </div>
+
 
     <!-- TABLA -->
     <div class="table-scroll">

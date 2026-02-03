@@ -187,8 +187,10 @@ const loadDashboard = async () => {
 
   const { data: sales = [] } = await supabase
     .from('sales')
-    .select('*')
-    .eq('user_id', user.id);
+    .select('*, sale_items(*, product:product_id(price, sale_price))')
+      .eq('user_id', user.id)
+      .neq('payment_method', 'por_cobrar') // ✅ Excluir por cobrar
+      .order('created_at', { ascending: false });
 
   const { data: egresos = [] } = await supabase
     .from('egresos')
