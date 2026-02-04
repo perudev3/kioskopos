@@ -1,5 +1,14 @@
 <template>
   <div class="dashboard-page" >
+    <!-- LOADING OVERLAY -->
+    <div v-if="isLoading" class="loading-overlay">
+      <img
+        src="/logo-sin-fondo.png"
+        alt="Cargando"
+        class="loading-logo"
+      />
+    </div>
+
     <div class="welcome-card" v-if="user">
         <img
           src="/logo-sin-fondo.png"
@@ -129,6 +138,8 @@ import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
 
+const isLoading = ref(true)
+
 const profile = ref(null)
 const user = ref(null)
 
@@ -175,110 +186,116 @@ watch(recentSales, () => {
    DASHBOARD
 ========================= */
 const loadDashboard = async () => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
 
-  const today = new Date().toISOString().split('T')[0];
+  try {
+    isLoading.value = true
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-  const { data: sales = [] } = await supabase
-    .from('sales')
-    .select('*, sale_items(*, product:product_id(price))')
-    .eq('user_id', user.id)
-    .neq('payment_method', 'por_cobrar')
-    .neq('status', 'cancelled')
-    .order('created_at', { ascending: false });
+    const today = new Date().toISOString().split('T')[0];
 
-
-  const { data: egresos = [] } = await supabase
-    .from('egresos')
-    .select('*')
-    .eq('user_id', user.id);
-
-  /* =========================
-     EGRESOS REALES (SIN CAPITAL)
-  ========================= */
-  const realExpenses = egresos.filter(e => e.tipo === 'egreso');
-
-  /* =========================
-     HOY
-  ========================= */
-  const todaySales = sales.filter(s => s.created_at.startsWith(today));
-  const todayExpenses = realExpenses.filter(e => e.created_at.startsWith(today));
-
-  const salesSumToday = todaySales.reduce((a, b) => a + Number(b.total), 0);
-  const expensesSumToday = todayExpenses.reduce((a, b) => a + Number(b.monto), 0);
-
-  salesToday.value = salesSumToday.toFixed(2);
-  profitToday.value = normalizeProfit(
-    salesSumToday - expensesSumToday
-  ).toFixed(2);
-
-  /* =========================
-     TOTALES
-  ========================= */
-  const totalSales = sales.reduce((a, b) => a + Number(b.total), 0);
-  const totalRealExpenses = realExpenses.reduce((a, b) => a + Number(b.monto), 0);
-
-  totalExpenses.value = totalRealExpenses.toFixed(2);
-  totalProfit.value = normalizeProfit(
-    totalSales - totalRealExpenses
-  ).toFixed(2);
-
-/* =========================
-   GANANCIA VENTA (igual que en Sales)
-========================= */
-realProfitTotal.value = sales.reduce((sum, sale) => {
-  let totalProfitSale = 0;
-
-  if (sale.sale_items && sale.sale_items.length) {
-    sale.sale_items.forEach(item => {
-      const qty = Number(item.quantity || 0);
-      const price = Number(item.price || 0);      // precio de venta
-      const base = Number(item.product?.price || 0); // costo real
-
-      totalProfitSale += (price * qty) - ((price - base) * qty);
-    });
-  }
-
-  return sum + totalProfitSale;
-}, 0);
+    const { data: sales = [] } = await supabase
+      .from('sales')
+      .select('*, sale_items(*, product:product_id(price))')
+      .eq('user_id', user.id)
+      .neq('payment_method', 'por_cobrar')
+      .neq('status', 'cancelled')
+      .order('created_at', { ascending: false });
 
 
-  /* =========================
-     ÚLTIMAS VENTAS
-  ========================= */
-  recentSales.value = sales.slice(0, 10).map(s => ({
-    id: s.id,
-    customer: s.user_id,
-    total: Number(s.total).toFixed(2),
-    date: new Date(s.created_at).toISOString().split('T')[0],
-  }));
+    const { data: egresos = [] } = await supabase
+      .from('egresos')
+      .select('*')
+      .eq('user_id', user.id);
 
-  const { data: products = [] } = await supabase.from('products').select('*');
-  lowStockProducts.value = products.filter(p => p.stock <= 5);
+    /* =========================
+      EGRESOS REALES (SIN CAPITAL)
+    ========================= */
+    const realExpenses = egresos.filter(e => e.tipo === 'egreso');
 
-  /* =========================
-     GRÁFICOS
-  ========================= */
-  salesLast7Days.value = [];
-  profitLast7Days.value = [];
+    /* =========================
+      HOY
+    ========================= */
+    const todaySales = sales.filter(s => s.created_at.startsWith(today));
+    const todayExpenses = realExpenses.filter(e => e.created_at.startsWith(today));
 
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const day = d.toISOString().split('T')[0];
+    const salesSumToday = todaySales.reduce((a, b) => a + Number(b.total), 0);
+    const expensesSumToday = todayExpenses.reduce((a, b) => a + Number(b.monto), 0);
 
-    const daySales = sales.filter(s => s.created_at.startsWith(day));
-    const dayExpenses = realExpenses.filter(e => e.created_at.startsWith(day));
+    salesToday.value = salesSumToday.toFixed(2);
+    profitToday.value = normalizeProfit(
+      salesSumToday - expensesSumToday
+    ).toFixed(2);
 
-    const sTotal = daySales.reduce((a, b) => a + Number(b.total), 0);
-    const eTotal = dayExpenses.reduce((a, b) => a + Number(b.monto), 0);
+    /* =========================
+      TOTALES
+    ========================= */
+    const totalSales = sales.reduce((a, b) => a + Number(b.total), 0);
+    const totalRealExpenses = realExpenses.reduce((a, b) => a + Number(b.monto), 0);
 
-    salesLast7Days.value.push(sTotal);
-    profitLast7Days.value.push(normalizeProfit(sTotal - eTotal));
-  }
+    totalExpenses.value = totalRealExpenses.toFixed(2);
+    totalProfit.value = normalizeProfit(
+      totalSales - totalRealExpenses
+    ).toFixed(2);
 
-  initCharts();
+    /* =========================
+      GANANCIA VENTA (igual que en Sales)
+    ========================= */
+    realProfitTotal.value = sales.reduce((sum, sale) => {
+      let totalProfitSale = 0;
+
+      if (sale.sale_items && sale.sale_items.length) {
+        sale.sale_items.forEach(item => {
+          const qty = Number(item.quantity || 0);
+          const price = Number(item.price || 0);      // precio de venta
+          const base = Number(item.product?.price || 0); // costo real
+
+          totalProfitSale += (price * qty) - ((price - base) * qty);
+        });
+      }
+
+      return sum + totalProfitSale;
+    }, 0);
+
+
+    /* =========================
+      ÚLTIMAS VENTAS
+    ========================= */
+    recentSales.value = sales.slice(0, 10).map(s => ({
+      id: s.id,
+      customer: s.user_id,
+      total: Number(s.total).toFixed(2),
+      date: new Date(s.created_at).toISOString().split('T')[0],
+    }));
+
+    const { data: products = [] } = await supabase.from('products').select('*');
+    lowStockProducts.value = products.filter(p => p.stock <= 5);
+
+    /* =========================
+      GRÁFICOS
+    ========================= */
+    salesLast7Days.value = [];
+    profitLast7Days.value = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const day = d.toISOString().split('T')[0];
+
+      const daySales = sales.filter(s => s.created_at.startsWith(day));
+      const dayExpenses = realExpenses.filter(e => e.created_at.startsWith(day));
+
+      const sTotal = daySales.reduce((a, b) => a + Number(b.total), 0);
+      const eTotal = dayExpenses.reduce((a, b) => a + Number(b.monto), 0);
+
+      salesLast7Days.value.push(sTotal);
+      profitLast7Days.value.push(normalizeProfit(sTotal - eTotal));
+    }
+
+    initCharts()
+  } finally {
+    isLoading.value = false
+  }  
 };
 
 /* =========================
@@ -573,6 +590,43 @@ onMounted(async () => {
   font-weight: 700;
   color: #1e3a8a;
   line-height: 1.2;
+}
+
+/* =========================
+   LOADING OVERLAY PRO
+========================= */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55); /* oscuro elegante */
+  backdrop-filter: blur(6px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.loading-logo {
+  width: 90px;
+  height: 90px;
+  object-fit: contain;
+  animation: pulse 1.6s ease-in-out infinite;
+  filter: drop-shadow(0 8px 20px rgba(0,0,0,.35));
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
 }
 
 </style>
