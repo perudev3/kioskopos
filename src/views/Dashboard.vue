@@ -43,12 +43,6 @@
       />
 
       <StatCard
-        title="Ganancia real acumulada (S/)"
-        :value="realTotalProfit.toFixed(2)"
-        color="success"
-      />
-
-      <StatCard
         title="Productos bajos en stock"
         :value="lowStockProducts.length"
       />

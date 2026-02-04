@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { supabase } from '../lib/supabase'
 import Swal from 'sweetalert2'
 import SaleDetailModal from '../components/SaleDetailModal.vue'
@@ -7,9 +7,29 @@ import SaleDetailModal from '../components/SaleDetailModal.vue'
 const sales = ref([])
 const loading = ref(false)
 const selectedSale = ref(null)
+const search = ref('')
+
+const filteredSales = computed(() => {
+  if (!search.value) return sales.value
+
+  const term = search.value.toLowerCase()
+
+  return sales.value.filter(sale => {
+    const customer =
+      sale.clientes_por_cobrar?.[0]?.customer_name?.toLowerCase() || ''
+
+    const products = (sale.sale_items || [])
+      .map(item => item.products?.name?.toLowerCase() || '')
+      .join(' ')
+
+    return customer.includes(term) || products.includes(term)
+  })
+})
+
 
 const loadPendingSales = async () => {
   loading.value = true
+
   const { data } = await supabase
     .from('sales')
     .select(`
@@ -17,8 +37,13 @@ const loadPendingSales = async () => {
       total,
       created_at,
       payment_method,
-      *,
-      clientes_por_cobrar!inner(customer_name)
+      clientes_por_cobrar!inner(customer_name),
+      sale_items (
+        quantity,
+        products (
+          name
+        )
+      )
     `)
     .eq('payment_method', 'por_cobrar')
     .order('created_at', { ascending: false })
@@ -26,6 +51,7 @@ const loadPendingSales = async () => {
   sales.value = data || []
   loading.value = false
 }
+
 
 const collectPayment = async (saleId) => {
   const { value: method } = await Swal.fire({
@@ -70,7 +96,15 @@ onMounted(loadPendingSales)
         No hay cobros pendientes 🎉
       </div>
 
-      <div v-for="sale in sales" :key="sale.id" class="card">
+      <input
+        v-model="search"
+        type="text"
+        placeholder="Buscar por cliente o producto..."
+        class="search-input"
+      />
+
+
+      <div v-for="sale in filteredSales" :key="sale.id" class="card">
         <div class="info">
           <div class="total">S/ {{ sale.total.toFixed(2) }}</div>
           <div class="customer">
@@ -203,5 +237,22 @@ h2 {
   background: #1fa2c1;
   transform: translateY(-1px);
 }
+
+.search-input {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 18px;
+  font-size: 14px;
+  outline: none;
+  transition: all .2s ease;
+}
+
+.search-input:focus {
+  border-color: #0b3c5d;
+  box-shadow: 0 0 0 2px rgba(11,60,93,.15);
+}
+
 
 </style>
