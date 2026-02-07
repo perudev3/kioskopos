@@ -40,151 +40,141 @@ const exportBoleta = async (sale) => {
 }
 
 /* =========================
+  CONVERSION DE RANGO A UTC MANUALMENTE
+========================= */
+const getLocalDateRangeUTC = (date) => {
+  const start = new Date(date + 'T00:00:00');
+  const end = new Date(date + 'T23:59:59');
+
+  return {
+    from: start.toISOString(),
+    to: end.toISOString()
+  };
+};
+
+
+/* =========================
    CARGAR VENTAS
 ========================= */
 const loadSales = async () => {
   loading.value = true;
+
   try {
-    // 1️⃣ Obtener usuario
-    const { data: authData, error: authError } = await supabase.auth.getUser();
+    // 1️⃣ Obtener usuario autenticado
+    const { data: authData, error: authError } =
+      await supabase.auth.getUser();
+
     if (authError) throw authError;
+
     user.value = authData?.user;
 
     if (!user.value) {
       alert('Usuario no autenticado');
       sales.value = [];
-      loading.value = false;
+      totalSales.value = 0;
       return;
     }
 
-    // 2️⃣ Obtener resumen general
-    const { data: summary, error: summaryError } = await supabase
-      .rpc('get_sales_summary', { p_user_id: user.value.id });
 
-    if (summaryError) throw summaryError;
-
-    const resume = summary?.[0] || {
-      total_sales: 0,
-      total_amount: 0,
-      total_net_profit: 0,
-      total_profit_sale: 0
-    };
-
-    totalSales.value = resume.total_sales;
-    totalAmount.value = Number(resume.total_amount || 0);
-    totalNetProfit.value = Number(resume.total_net_profit || 0);
-    totalProfitSale.value = Number(resume.total_profit_sale || 0);
-
-    // 3️⃣ Traer ventas
-    let { data: salesData, error } = await supabase
+    // 2️⃣ Traer ventas con condiciones
+    let query = supabase
       .from('sales')
       .select('*, sale_items(*, product:product_id(price))')
       .eq('user_id', user.value.id)
       .neq('payment_method', 'por_cobrar')
       .neq('status', 'cancelled')
       .order('created_at', { ascending: false });
+    
+     // 📅 Filtros corregidos
+    if (fromDate.value && toDate.value) {
+      const fromRange = getLocalDateRangeUTC(fromDate.value);
+      const toRange = getLocalDateRangeUTC(toDate.value);
+
+      query = query
+        .gte('created_at', fromRange.from)
+        .lte('created_at', toRange.to);
+    }
+
+    const { data: salesData, error } = await query;
 
     if (error) throw error;
 
-    // Filtrar por fechas usando UTC
-    if (fromDate.value) {
-      salesData = salesData.filter(sale => {
-        const saleUTC = new Date(sale.created_at);
-        const saleDayUTC = saleUTC.getUTCFullYear() + '-' +
-                          String(saleUTC.getUTCMonth() + 1).padStart(2, '0') + '-' +
-                          String(saleUTC.getUTCDate()).padStart(2, '0');
-        return saleDayUTC >= fromDate.value;
-      });
-    }
+    // 3️⃣ Asignar lista
+    sales.value = salesData || [];
+    totalAmount.value = calculateTotalAmount(sales.value);
+    totalNetProfit.value = calculateNetProfit(sales.value);
+    totalProfitSale.value = calculateProfitSale(sales.value);
 
-    if (toDate.value) {
-      salesData = salesData.filter(sale => {
-        const saleUTC = new Date(sale.created_at);
-        const saleDayUTC = saleUTC.getUTCFullYear() + '-' +
-                          String(saleUTC.getUTCMonth() + 1).padStart(2, '0') + '-' +
-                          String(saleUTC.getUTCDate()).padStart(2, '0');
-        return saleDayUTC <= toDate.value;
-      });
-    }
-
-
-    // 5️⃣ Calcular totales y ganancias solo sobre las ventas filtradas
-    let totalAmountCalc = 0;
-    let totalNetProfitCalc = 0;
-    let totalProfitSaleCalc = 0;
-
-    salesData.forEach(sale => {
-      let net_profit = 0;
-      let profit_sale = 0;
-
-      if (sale.sale_items) {
-        sale.sale_items.forEach(item => {
-          const qty = Number(item.quantity || 0);
-          const price = Number(item.price || 0);
-          const base = Number(item.product?.price || 0);
-          const subtotal = price * qty;
-          const net = (price - base) * qty;
-          const remaining = subtotal - net;
-          net_profit += net;
-          profit_sale += remaining;
-        });
-      }
-
-      sale.net_profit = Math.round(net_profit * 100) / 100;
-      sale.profit_sale = Math.round(profit_sale * 100) / 100;
-      sale.total = Math.round(
-        (sale.sale_items?.reduce((acc, i) => acc + Number(i.price) * Number(i.quantity), 0) || 0) * 100
-      ) / 100;
-
-      totalAmountCalc += sale.total;
-      totalNetProfitCalc += sale.net_profit;
-      totalProfitSaleCalc += sale.profit_sale;
-    });
-
-    sales.value = salesData;
-    totalSales.value = salesData.length;
-    totalAmount.value = totalAmountCalc;
-    totalNetProfit.value = totalNetProfitCalc;
-    totalProfitSale.value = totalProfitSaleCalc;
+    // 4️⃣ Total de ventas (cantidad)
+    totalSales.value = sales.value.length;
 
   } catch (err) {
     console.error('Error cargando ventas:', err);
     alert('Error cargando ventas: ' + err.message);
+
     sales.value = [];
     totalSales.value = 0;
-    totalAmount.value = 0;
-    totalNetProfit.value = 0;
-    totalProfitSale.value = 0;
+
   } finally {
     loading.value = false;
   }
 };
 
-
-onMounted(loadSales);
-
 /* =========================
-   GANANCIA A CAPITAL
+   GANANCIA NETA
 ========================= */
-const transferProfitToCapital = async () => {
-  const montoNum = Number(profitToCapital.value);
-  if (!montoNum || montoNum <= 0) return alert('Ingresa un monto válido');
-  if (montoNum > totalNetProfit.value) return alert('No puedes transferir más que tu ganancia');
 
-  const { error } = await supabase.from('egresos').insert({
-    user_id: user.value.id,
-    descripcion: 'Reinversión de ganancia',
-    monto: montoNum,
-    categoria: 'Capital',
-    tipo: 'capital',
-    origen: 'ganancia'
+const calculateNetProfit = (salesList) => {
+  let netProfit = 0;
+
+  salesList.forEach(sale => {
+    sale.sale_items?.forEach(item => {
+      const qty = Number(item.quantity || 0);
+
+      // Precio venta
+      const salePrice = Number(item.price || 0);
+
+      // Precio base (costo)
+      const basePrice = Number(item.product?.price || 0);
+
+      const profit = (salePrice - basePrice) * qty;
+
+      netProfit += profit;
+    });
   });
 
-  if (error) return alert('Error al pasar ganancia a capital');
-
-  profitToCapital.value = '';
-  showProfitModal.value = false;
+  return Math.round(netProfit * 100) / 100;
 };
+
+/* =========================
+   GANANCIA VENTA
+========================= */
+
+const calculateTotalSalesAmount = (salesList) => {
+  let total = 0;
+
+  salesList.forEach(sale => {
+    sale.sale_items?.forEach(item => {
+      const qty = Number(item.quantity || 0);
+      const price = Number(item.price || 0);
+
+      total += price * qty;
+    });
+  });
+
+  return Math.round(total * 100) / 100;
+};
+
+
+const calculateProfitSale = (salesList) => {
+  const totalSales = calculateTotalSalesAmount(salesList);
+  const netProfit = calculateNetProfit(salesList);
+
+  const profitSale = totalSales - netProfit;
+
+  return Math.round(profitSale * 100) / 100;
+};
+
 
 /* =========================
    CANCELAR VENTA
@@ -203,6 +193,41 @@ const cancelSale = async (saleId) => {
   await loadSales();
   alert('Venta cancelada exitosamente.');
 };
+
+/* =========================
+   TOTAL VENTAS
+========================= */
+
+const calculateTotalAmount = (salesList) => {
+  let total = 0;
+
+  salesList.forEach(sale => {
+    sale.sale_items?.forEach(item => {
+      const qty = Number(item.quantity || 0);
+      const price = Number(item.price || 0);
+
+      total += price * qty;
+    });
+  });
+
+  return Math.round(total * 100) / 100;
+};
+
+
+/* =========================
+   RESETEAR FILTROS
+========================= */
+const resetFilters = () => {
+  fromDate.value = null;
+  toDate.value = null;
+  loadSales();
+};
+
+
+/* =========================
+   CARGAR DATA DE VENTAS
+========================= */
+onMounted(loadSales);
 </script>
 
 
@@ -214,8 +239,16 @@ const cancelSale = async (saleId) => {
     <div class="filters">
       <input type="date" v-model="fromDate" />
       <input type="date" v-model="toDate" />
-      <button @click="loadSales">Filtrar</button>
+
+      <button @click="loadSales">
+        Filtrar
+      </button>
+
+      <button @click="resetFilters">
+        Limpiar
+      </button>
     </div>
+
 
     <!-- RESUMEN -->
     <div class="summary">
