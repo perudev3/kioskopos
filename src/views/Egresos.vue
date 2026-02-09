@@ -2,9 +2,6 @@
 import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../lib/supabase'
 
-/* =========================
-   ESTADO
-========================= */
 const egresos = ref([])
 const ventas = ref([])
 
@@ -16,134 +13,154 @@ const loading = ref(false)
 const user = ref(null)
 const capitalMonto = ref('')
 
+const totalVentas = ref(0)
+const totalGanancia = ref(0)
+const totalCostoProductos = ref(0)
+
+const showEgresoModal = ref(false)
+const showCapitalModal = ref(false)
+
 /* =========================
-   CARGAR DATOS
+   USER
+========================= */
+const loadUser = async () => {
+  const { data, error } = await supabase.auth.getUser()
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  user.value = data?.user
+}
+
+/* =========================
+   LOAD GENERAL
 ========================= */
 const loadData = async () => {
   loading.value = true
 
-  const { data: auth } = await supabase.auth.getUser()
-  if (!auth?.user) {
-    loading.value = false
-    return
-  }
-  user.value = auth.user
-
-  /* ---- EGRESOS ---- */
-  const { data: egresosData, error: egresosError } = await supabase
-    .from('egresos')
-    .select('*')
-    .eq('user_id', user.value.id)
-    .order('created_at', { ascending: false })
-
-  if (!egresosError) egresos.value = egresosData || []
-
-  /* ---- VENTAS ---- */
-  const { data: ventasData, error: ventasError } = await supabase
-    .from('sales')
-    .select('*, sale_items(*, product:product_id(price))')
-    .eq('user_id', user.value.id)
-    .neq('payment_method', 'por_cobrar') // Excluir por cobrar
-    .neq('status', 'cancelled')          // Excluir ventas canceladas
-
-  if (!ventasError && ventasData) {
-    ventas.value = ventasData
-
-    // Calcular ganancia neta por venta
-    ventas.value.forEach(sale => {
-      let net_profit = 0
-      if (sale.sale_items) {
-        sale.sale_items.forEach(item => {
-          const qty = Number(item.quantity || 0)
-          const precioVenta = Number(item.price || 0)
-          const precioBase = Number(item.product?.price || 0)
-          net_profit += (precioVenta - precioBase) * qty
-        })
-      }
-      sale.net_profit = Math.round(net_profit * 100) / 100
-    })
-  }
+  await loadUser()
+  await loadVentas()
+  await loadEgresos()
 
   loading.value = false
 }
 
 /* =========================
-   CÁLCULOS CORRECTOS
+   CARGA VENTAS
 ========================= */
+const loadVentas = async () => {
+  if (!user.value) return
 
-// Ganancia neta de todas las ventas válidas
-const totalVentas = computed(() =>
-  ventas.value
-    .filter(v => v.status !== 'cancelled' && v.payment_method !== 'por_cobrar')
-    .reduce((sum, sale) => {
-      let venta = 0
-      if (sale.sale_items) {
-        sale.sale_items.forEach(item => {
-          const qty = Number(item.quantity || 0)
-          const precioVenta = Number(item.price || 0)
-          venta += precioVenta * qty
-        })
-      }
-      return sum + venta
-    }, 0)
-)
+  const { data, error } = await supabase
+    .from('sales')
+    .select(`
+      *,
+      sale_items(
+        quantity,
+        price,
+        product:product_id(price)
+      )
+    `)
+    .eq('user_id', user.value.id)
+    .neq('payment_method', 'por_cobrar')
+    .neq('status', 'cancelled')
 
-// Ganancia de ventas (precio_venta - precio_base)
-const totalGananciaVentas = computed(() =>
-  ventas.value
-    .filter(v => v.status !== 'cancelled' && v.payment_method !== 'por_cobrar')
-    .reduce((sum, sale) => {
-      let ganancia = 0
-      if (sale.sale_items) {
-        sale.sale_items.forEach(item => {
-          const qty = Number(item.quantity || 0)
-          const precioVenta = Number(item.price || 0)
-          const precioBase = Number(item.product?.price || 0)
-          ganancia += (precioVenta - precioBase) * qty
-        })
-      }
-      return sum + ganancia
-    }, 0)
-)
+  if (error) {
+    console.error('Error ventas:', error)
+    return
+  }
 
-// Total egresos registrados (tipo 'egreso')
-const totalEgresos = computed(() =>
-  egresos.value
-    .filter(e => e.tipo === 'egreso')
+  ventas.value = data || []
+
+  // 🔥 MISMO CALCULO QUE DASHBOARD
+  let total = 0
+
+  ventas.value.forEach(sale => {
+    let totalProfitSale = 0
+
+    if (sale.sale_items && sale.sale_items.length) {
+      sale.sale_items.forEach(item => {
+        const qty = Number(item.quantity || 0)
+        const price = Number(item.price || 0)
+        const base = Number(item.product?.price || 0)
+
+        totalProfitSale += (price * qty) - ((price - base) * qty)
+      })
+    }
+
+    total += totalProfitSale
+  })
+
+  totalGanancia.value = Math.round(total * 100) / 100
+}
+
+
+/* =========================
+   CALCULO GANANCIA REAL
+========================= */
+const calculateNetProfit = (salesList) => {
+  let netProfit = 0
+
+  salesList.forEach(sale => {
+    sale.sale_items?.forEach(item => {
+      const qty = Number(item.quantity || 0)
+      const salePrice = Number(item.price || 0)
+      const basePrice = Number(item.product?.price || 0)
+
+      const profit = (salePrice - basePrice) * qty
+      netProfit += profit
+    })
+  })
+
+  return Math.round(netProfit * 100) / 100
+}
+
+/* =====================================================
+   🔹 CAPITAL VENTAS (GANANCIA)
+===================================================== */
+const capitalVentas = computed(() => {
+  return Number(totalGanancia.value || 0)
+})
+
+
+/* =====================================================
+   🔹 CAPITAL (egresos categoria = capital)
+===================================================== */
+const totalCapital = computed(() => {
+  return egresos.value
+    .filter(e =>
+      (e.categoria || '').toLowerCase() === 'capital' ||
+      (e.tipo || '').toLowerCase() === 'capital'
+    )
     .reduce((sum, e) => sum + Number(e.monto || 0), 0)
-)
+})
 
-// Capital inicial o agregado (tipo capital)
-const totalCapital = computed(() =>
-  egresos.value
-    .filter(e => e.tipo === 'capital')
+
+/* =====================================================
+   🔹 EGRESOS OPERATIVOS (restan)
+===================================================== */
+const totalEgresos = computed(() => {
+  return egresos.value
+    .filter(e =>
+      (e.categoria || '').toLowerCase() !== 'capital' &&
+      (e.tipo || '').toLowerCase() !== 'capital'
+    )
     .reduce((sum, e) => sum + Number(e.monto || 0), 0)
-)
+})
 
-// Capital ventas disponible = ganancia neta de ventas - egresos
-const capitalDisponible = computed(() =>
-  Math.round(( (totalVentas.value - totalGananciaVentas.value) - totalEgresos.value ) * 100) / 100
-)
-
-
-// Ganancia neta de ventas (precio_venta - precio_base)
-const totalGanancia = computed(() =>
-  ventas.value
-    .filter(v => v.status !== 'cancelled' && v.payment_method !== 'por_cobrar')
-    .reduce((sum, sale) => {
-      let ganancia = 0
-      if (sale.sale_items) {
-        sale.sale_items.forEach(item => {
-          const qty = Number(item.quantity || 0)
-          const precioVenta = Number(item.price || 0)
-          const precioBase = Number(item.product?.price || 0)
-          ganancia += (precioVenta - precioBase) * qty
-        })
-      }
-      return sum + ganancia
-    }, 0)
-)
-
+/* =====================================================
+   🔹 CAPITAL DISPONIBLE (TU FORMULA)
+   Ganancia ventas - egresos + capital
+===================================================== */
+const capitalDisponible = computed(() => {
+  return (
+    Number(totalGanancia.value || 0) -
+    Number(totalEgresos.value || 0) +
+    Number(totalCapital.value || 0)
+  )
+})
 
 /* =========================
    REGISTRAR EGRESO
@@ -217,13 +234,31 @@ const saveCapital = async () => {
 }
 
 /* =========================
-   MODALES
+   CARGA DE EGRESOS
 ========================= */
-const showEgresoModal = ref(false)
-const showCapitalModal = ref(false)
+const loadEgresos = async () => {
+  if (!user.value) return
 
+  const { data, error } = await supabase
+    .from('egresos')
+    .select('*')
+    .eq('user_id', user.value.id)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error(error)
+    return
+  }
+
+  egresos.value = data || []
+}
+
+/* =========================
+   INIT
+========================= */
 onMounted(loadData)
 </script>
+
 
 
 <template>
@@ -232,10 +267,6 @@ onMounted(loadData)
 
     <!-- RESUMEN -->
     <div class="summary">
-      <div>
-        Ventas Total
-        <strong>S/ {{ totalVentas.toFixed(2) }}</strong>
-      </div>
 
       <div class="egreso">
         Egresos
@@ -243,9 +274,12 @@ onMounted(loadData)
       </div>
 
       <div class="capital">
-        Capital ventas disponible
-        <strong>S/ {{ capitalDisponible.toFixed(2) }}</strong>
+        Capital ventas
+        <strong>
+          S/  {{Number(capitalDisponible || 0).toFixed(2)}}
+        </strong>
       </div>
+
     </div>
 
     <!-- ACCIONES -->
@@ -319,25 +353,32 @@ onMounted(loadData)
     </div>
 
     <!-- LISTA -->
-    <div class="list-container">
-      <div v-if="egresos.length === 0" class="empty">
-        No hay egresos registrados
-      </div>
-
-      <div
+    <div
         v-for="e in egresos"
         :key="e.id"
         class="egreso-item"
-      >
-        <div>
-          <strong>{{ e.descripcion }}</strong>
-          <small>{{ e.categoria || 'Sin categoría' }}</small>
-        </div>
-        <span class="monto">
-          - S/ {{ Number(e.monto).toFixed(2) }}
-        </span>
+    >
+      <div>
+        <strong>{{ e.descripcion }}</strong>
+        <small>{{ e.categoria || 'Sin categoría' }}</small>
       </div>
+
+      <!-- SI ES CAPITAL -->
+      <span
+        v-if="
+          (String(e?.categoria || '').toLowerCase() === 'capital') ||
+          (String(e?.tipo || '').toLowerCase() === 'capital')
+        "
+        class="monto capital"
+      >
+        + S/ {{ Number(e?.monto || 0).toFixed(2) }}
+      </span>
+
+      <span v-else class="monto egreso">
+        - S/ {{ Number(e?.monto || 0).toFixed(2) }}
+      </span>
     </div>
+
   </div>
 </template>
 
@@ -523,5 +564,16 @@ h1 {
   background: #e5e7eb;
   color: #111827;
 }
+
+.monto.egreso {
+  font-weight: 700;
+  color: #dc2626;
+}
+
+.monto.capital {
+  font-weight: 700;
+  color: #16a34a;
+}
+
 
 </style>
