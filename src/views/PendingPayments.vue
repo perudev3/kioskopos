@@ -26,6 +26,13 @@ const filteredSales = computed(() => {
   })
 })
 
+const totalPending = computed(() => {
+  return filteredSales.value.reduce((sum, sale) => {
+    return sum + (sale.total || 0)
+  }, 0)
+})
+
+
 
 const loadPendingSales = async () => {
   loading.value = true
@@ -103,28 +110,35 @@ onMounted(loadPendingSales)
         class="search-input"
       />
 
-
-      <div v-for="sale in filteredSales" :key="sale.id" class="card">
-        <div class="info">
-          <div class="total">S/ {{ sale.total.toFixed(2) }}</div>
-          <div class="customer">
-            Cliente: {{ sale.clientes_por_cobrar[0]?.customer_name }}
-          </div>
-          <div class="date">
-            {{ new Date(sale.created_at).toLocaleString() }}
-          </div>
-        </div>
-
-        <button class="pay-btn" @click="collectPayment(sale.id)">
-          Cobrar
-        </button>
-        <button
-          class="receipt-btn"
-          @click="selectedSale = sale"
-        >
-          Boleta
-        </button>
+      <div class="summary">
+        Total pendiente: <span>S/ {{ totalPending.toFixed(2) }}</span>
       </div>
+
+      <div class="sales-scroll">
+        <div v-for="sale in filteredSales" :key="sale.id" class="card">
+          <div class="info">
+            <div class="total">S/ {{ sale.total.toFixed(2) }}</div>
+            <div class="customer">
+              Cliente: {{ sale.clientes_por_cobrar[0]?.customer_name }}
+            </div>
+            <div class="date">
+              {{ new Date(sale.created_at).toLocaleString() }}
+            </div>
+          </div>
+
+          <button class="pay-btn" @click="collectPayment(sale.id)">
+            Cobrar
+          </button>
+          <button
+            class="receipt-btn"
+            @click="selectedSale = sale"
+          >
+            Boleta
+          </button>
+        </div>
+      </div>
+
+
     </div>
   </div>
 
@@ -254,5 +268,44 @@ h2 {
   box-shadow: 0 0 0 2px rgba(11,60,93,.15);
 }
 
+/* SUMATORIA */
+.summary {
+  background: white;
+  padding: 14px 18px;
+  border-radius: 14px;
+  margin-bottom: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #334155;
+  box-shadow: 0 8px 20px rgba(0,0,0,.06);
+}
+
+.summary span {
+  color: #16a34a;
+  font-weight: 800;
+  font-size: 18px;
+  margin-left: 6px;
+}
+
+/* SCROLL LISTA */
+.sales-scroll {
+  max-height: 520px;   /* altura visible */
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+/* Scroll bonito */
+.sales-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sales-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+
+.sales-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
 
 </style>
