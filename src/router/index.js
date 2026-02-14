@@ -47,6 +47,11 @@ const routes = [
         meta: { title: 'Egresos', admin: true },
       },
       {
+        path: 'capital',
+        component: () => import('../views/Capital.vue'),
+        meta: { title: 'Capital', admin: true },
+      },
+      {
         path: '/reset-password',
         component: () => import('../views/ResetPassword.vue'),
       },     

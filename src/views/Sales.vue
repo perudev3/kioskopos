@@ -233,7 +233,7 @@ onMounted(loadSales);
 
 <template>
   <div class="reports">
-    <h1>📊 Reporte de Ventas</h1>
+    <h1>Reporte de Ventas</h1>
 
     <!-- FILTROS -->
     <div class="filters">
