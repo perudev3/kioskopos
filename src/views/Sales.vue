@@ -411,9 +411,9 @@ onMounted(loadSales);
           Disponible: S/ {{ availableProfitSale.toFixed(2) }}
         </small>
       </div>
-      <button style="margin-left: 8px;background: #0b3c5d; color: white;" @click="showProfitModal = true">
+      <!-- <button style="margin-left: 8px;background: #0b3c5d; color: white;" @click="showProfitModal = true">
         ↪ Pasar a capital
-      </button>
+      </button> -->
     </div>
 
     <!-- TABLA -->

@@ -6,17 +6,28 @@
 
       <!-- Resumen -->
       <div class="stats-grid">
-        <div class="stat-box">
-          <div class="stat-label">Capital Total</div>
+        <div class="stat-box primary">
+          <div class="stat-label">💰 Capital Total</div>
           <div class="stat-value">S/ {{ formatMoney(capitalTotal) }}</div>
+          <div class="stat-detail">
+            Capital: S/ {{ formatMoney(capitalRegistrado) }} + Ganancia Venta: S/ {{ formatMoney(gananciaVenta) }}
+          </div>
         </div>
-        <div class="stat-box">
-          <div class="stat-label">Registros</div>
-          <div class="stat-value">{{ movimientos.length }}</div>
+
+        <div class="stat-box danger">
+          <div class="stat-label">📉 Total Egresos</div>
+          <div class="stat-value negative">- S/ {{ formatMoney(totalEgresos) }}</div>
+          <div class="stat-detail">{{ porcentajeGastado }}% del total</div>
         </div>
-        <div class="stat-box">
-          <div class="stat-label">Promedio</div>
-          <div class="stat-value">S/ {{ formatMoney(promedioCapital) }}</div>
+
+        <div class="stat-box" :class="capitalDisponible >= 0 ? 'success' : 'warning'">
+          <div class="stat-label">💵 Capital Disponible</div>
+          <div class="stat-value" :class="capitalDisponible >= 0 ? 'positive' : 'negative'">
+            S/ {{ formatMoney(capitalDisponible) }}
+          </div>
+          <div class="stat-detail">
+            {{ capitalDisponible >= 0 ? 'Saldo positivo' : '⚠️ Saldo negativo' }}
+          </div>
         </div>
       </div>
 
@@ -113,24 +124,56 @@ export default {
       isLoading: false,
       loadingMovimientos: false,
       userId: null,
-      showModal: false
+      showModal: false,
+      // Datos de ventas
+      totalVentas: 0,
+      gananciaNeta: 0,
+      // Datos de egresos
+      totalEgresos: 0,
+      fromDate: '',
+      toDate: ''
     }
   },
   computed: {
-    capitalTotal() {
+    capitalRegistrado() {
       return this.movimientos.reduce((total, m) => {
         return total + parseFloat(m.monto);
       }, 0);
     },
-    promedioCapital() {
-      if (this.movimientos.length === 0) return 0;
-      return this.capitalTotal / this.movimientos.length;
+    gananciaVenta() {
+      // Ganancia de Venta = Total Ventas - Ganancia Neta
+      return this.totalVentas - this.gananciaNeta;
+    },
+    capitalTotal() {
+      // Capital Total = Capital Registrado + Ganancia de Venta
+      return this.capitalRegistrado + this.gananciaVenta;
+    },
+    capitalDisponible() {
+      // Capital Disponible = Capital Total - Egresos
+      return this.capitalTotal - this.totalEgresos;
+    },
+    porcentajeGastado() {
+      if (this.capitalTotal === 0) return 0;
+      return Math.round((this.totalEgresos / this.capitalTotal) * 100);
     }
   },
   async mounted() {
     await this.getUserAndLoadData();
   },
   methods: {
+    /* =========================
+       CONVERSIÓN DE RANGO A UTC
+    ========================= */
+    getLocalDateRangeUTC(date) {
+      const start = new Date(date + 'T00:00:00');
+      const end = new Date(date + 'T23:59:59');
+
+      return {
+        from: start.toISOString(),
+        to: end.toISOString()
+      };
+    },
+
     async getUserAndLoadData() {
       try {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -146,21 +189,123 @@ export default {
         }
 
         this.userId = user.id;
-        await this.loadCapital();
+        await this.loadAllData();
       } catch (error) {
         console.error('Error en getUserAndLoadData:', error);
+      }
+    },
+
+    /* =========================
+       CARGAR VENTAS
+    ========================= */
+    async loadVentas() {
+      if (!this.userId) return;
+
+      try {
+        let query = supabase
+          .from('sales')
+          .select('*, sale_items(*, product:product_id(price))')
+          .eq('user_id', this.userId)
+          .neq('payment_method', 'por_cobrar')
+          .neq('status', 'cancelled');
+
+        // Aplicar filtros de fecha si existen
+        if (this.fromDate && this.toDate) {
+          const fromRange = this.getLocalDateRangeUTC(this.fromDate);
+          const toRange = this.getLocalDateRangeUTC(this.toDate);
+
+          query = query
+            .gte('created_at', fromRange.from)
+            .lte('created_at', toRange.to);
+        }
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+
+        // Calcular total de ventas y ganancia neta
+        let total = 0;
+        let ganancia = 0;
+        
+        (data || []).forEach(sale => {
+          sale.sale_items?.forEach(item => {
+            const qty = Number(item.quantity || 0);
+            const salePrice = Number(item.price || 0);
+            const basePrice = Number(item.product?.price || 0);
+            
+            // Total de ventas
+            total += salePrice * qty;
+            
+            // Ganancia neta (diferencia entre precio de venta y precio base)
+            const profit = (salePrice - basePrice) * qty;
+            ganancia += profit;
+          });
+        });
+
+        this.totalVentas = Math.round(total * 100) / 100;
+        this.gananciaNeta = Math.round(ganancia * 100) / 100;
+      } catch (error) {
+        console.error('Error cargando ventas:', error);
+      }
+    },
+
+    /* =========================
+       CARGAR EGRESOS
+    ========================= */
+    async loadEgresos() {
+      if (!this.userId) return;
+
+      try {
+        let query = supabase
+          .from('egresos')
+          .select('monto')
+          .eq('user_id', this.userId)
+          .neq('categoria', 'Capital')
+          .neq('tipo', 'capital');
+
+        // Aplicar filtros de fecha si existen
+        if (this.fromDate && this.toDate) {
+          const fromRange = this.getLocalDateRangeUTC(this.fromDate);
+          const toRange = this.getLocalDateRangeUTC(this.toDate);
+
+          query = query
+            .gte('created_at', fromRange.from)
+            .lte('created_at', toRange.to);
+        }
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+
+        this.totalEgresos = (data || []).reduce((sum, item) => {
+          return sum + Number(item.monto || 0);
+        }, 0);
+      } catch (error) {
+        console.error('Error cargando egresos:', error);
       }
     },
 
     async loadCapital() {
       this.loadingMovimientos = true;
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('capital')
           .select('*')
           .eq('user_id', this.userId)
           .eq('tipo_movimiento', 'ingreso')
           .order('fecha_registro', { ascending: false });
+
+        // Aplicar filtros de fecha si existen
+        if (this.fromDate && this.toDate) {
+          const fromRange = this.getLocalDateRangeUTC(this.fromDate);
+          const toRange = this.getLocalDateRangeUTC(this.toDate);
+
+          query = query
+            .gte('fecha_registro', fromRange.from)
+            .lte('fecha_registro', toRange.to);
+        }
+
+        const { data, error } = await query;
 
         if (error) {
           console.error('Error al cargar capital:', error);
@@ -174,6 +319,24 @@ export default {
       } finally {
         this.loadingMovimientos = false;
       }
+    },
+
+    /* =========================
+       CARGAR TODO
+    ========================= */
+    async loadAllData() {
+      await this.loadVentas();
+      await this.loadEgresos();
+      await this.loadCapital();
+    },
+
+    /* =========================
+       RESETEAR FILTROS
+    ========================= */
+    resetFilters() {
+      this.fromDate = '';
+      this.toDate = '';
+      this.loadAllData();
     },
 
     async submitCapital() {
@@ -220,7 +383,7 @@ export default {
     },
 
     formatMoney(amount) {
-      return parseFloat(amount).toFixed(2);
+      return parseFloat(amount || 0).toFixed(2);
     },
 
     formatDate(dateString) {
@@ -262,10 +425,60 @@ h2 {
   font-size: 14px;
 }
 
+/* FILTROS */
+.filters {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.filters input[type='date'] {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.filters input[type='date']:focus {
+  border-color: #0b3c5d;
+  box-shadow: 0 0 0 2px rgba(11,60,93,.15);
+}
+
+.filter-btn, .clear-btn {
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-btn {
+  background: #0b3c5d;
+  color: white;
+}
+
+.filter-btn:hover {
+  background: #1fa2c1;
+}
+
+.clear-btn {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.clear-btn:hover {
+  background: #e2e8f0;
+}
+
 /* Stats Grid */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
   margin-bottom: 20px;
 }
@@ -275,18 +488,51 @@ h2 {
   padding: 18px;
   border-radius: 18px;
   box-shadow: 0 10px 25px rgba(0,0,0,.08);
+  border-left: 4px solid #64748b;
+}
+
+.stat-box.primary {
+  border-left-color: #0b3c5d;
+}
+
+.stat-box.danger {
+  border-left-color: #ef4444;
+}
+
+.stat-box.success {
+  border-left-color: #22c55e;
+}
+
+.stat-box.warning {
+  border-left-color: #f59e0b;
 }
 
 .stat-label {
   font-size: 13px;
   color: #64748b;
   margin-bottom: 6px;
+  font-weight: 600;
 }
 
 .stat-value {
   font-size: 24px;
   font-weight: 800;
   color: #111827;
+  margin-bottom: 4px;
+}
+
+.stat-value.negative {
+  color: #ef4444;
+}
+
+.stat-value.positive {
+  color: #22c55e;
+}
+
+.stat-detail {
+  font-size: 12px;
+  color: #94a3b8;
+  font-weight: 500;
 }
 
 /* Action Card */
@@ -378,23 +624,6 @@ h2 {
 .date {
   font-size: 13px;
   color: #64748b;
-}
-
-.delete-btn {
-  background: #ef4444;
-  color: white;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all .2s ease;
-}
-
-.delete-btn:hover {
-  background: #dc2626;
-  transform: translateY(-1px);
 }
 
 /* Modal */
@@ -509,14 +738,14 @@ textarea.form-input {
     grid-template-columns: 1fr;
   }
 
+  .filters {
+    flex-direction: column;
+  }
+
   .card {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
-  }
-
-  .delete-btn {
-    width: 100%;
   }
 
   .modal {
