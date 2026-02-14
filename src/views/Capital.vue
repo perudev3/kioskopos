@@ -6,7 +6,7 @@
 
       <!-- Resumen -->
       <div class="stats-grid">
-        <div class="stat-box primary">
+        <!---<div class="stat-box primary">
           <div class="stat-label">💰 Capital Total</div>
           <div class="stat-value">S/ {{ formatMoney(capitalTotal) }}</div>
           <div class="stat-detail">
@@ -18,7 +18,7 @@
           <div class="stat-label">📉 Total Egresos</div>
           <div class="stat-value negative">- S/ {{ formatMoney(totalEgresos) }}</div>
           <div class="stat-detail">{{ porcentajeGastado }}% del total</div>
-        </div>
+        </div>-->
 
         <div class="stat-box" :class="capitalDisponible >= 0 ? 'success' : 'warning'">
           <div class="stat-label">💵 Capital Disponible</div>
