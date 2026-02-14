@@ -51,7 +51,6 @@ const handleConfirm = () => {
 
       <select v-model="localMethod" @change="emit('update:method', localMethod)">
         <option value="cash">Efectivo</option>
-        <option value="card">Tarjeta</option>
         <option value="yape">Yape</option>
         <option value="plin">Plin</option>
         <option value="por_cobrar">Por cobrar</option>
