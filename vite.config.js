@@ -1,7 +1,7 @@
-import { defineConfig } from 'vite';
-import vue from '@vitejs/plugin-vue';
-import { VitePWA } from 'vite-plugin-pwa';
-import path from 'path';
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import { VitePWA } from 'vite-plugin-pwa'
+import path from 'path'
 
 export default defineConfig({
   plugins: [
@@ -9,16 +9,15 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico'],
-    
       manifest: {
         name: 'KioPOS',
         short_name: 'KioPOS',
-        description: 'Sistema de ventas y control de comercios como Tiendas y Kioskos',
+        description:
+          'Sistema de ventas y control de comercios como Tiendas y Kioskos',
         theme_color: '#4f46e5',
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',
-        scope: '/',
         icons: [
           {
             src: '/logo-sin-fondo.png',
@@ -32,10 +31,6 @@ export default defineConfig({
           },
         ],
       },
-    
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
-      },
     }),
   ],
   resolve: {
@@ -43,4 +38,4 @@ export default defineConfig({
       '@': path.resolve(__dirname, 'src'),
     },
   },
-});
+})
