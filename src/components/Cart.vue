@@ -50,7 +50,7 @@ const cartCount = computed(() => {
 
     <!-- Items -->
     <div class="cart-items" v-if="cart.length > 0">
-      <div v-for="p in cart" :key="p.id" class="cart-item">
+      <div v-for="p in cart" :key="`${p.id}-${p.weight || 'normal'}`" class="cart-item">
         <!-- Imagen del producto -->
         <div class="item-image">
           <img v-if="p.image_url" :src="p.image_url" :alt="p.name" />
@@ -66,7 +66,7 @@ const cartCount = computed(() => {
         <!-- Info del producto -->
         <div class="item-content">
           <div class="item-header">
-            <h4 class="item-name">{{ p.name }}</h4>
+            <h4 class="item-name">{{ p.displayName || p.name }}</h4>
             <button class="remove-btn" @click="$emit('remove', p.id)">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="3 6 5 6 21 6"></polyline>
@@ -75,8 +75,17 @@ const cartCount = computed(() => {
             </button>
           </div>
 
+          <!-- Badge de peso para productos WEIGHT -->
+          <div v-if="p.is_weight_product" class="weight-badge-container">
+            <span class="weight-badge">{{ p.weight }}kg</span>
+            <span class="base-price-info">Precio base: S/ {{ Number(p.original_price).toFixed(2) }}/kg</span>
+          </div>
+
           <div class="item-details">
-            <span class="unit-price">S/ {{ p.sale_price.toFixed(2) }} c/u</span>
+            <span class="unit-price">
+              S/ {{ Number(p.sale_price).toFixed(2) }} c/u
+              <span v-if="p.is_weight_product" class="weight-unit">({{ p.weight }}kg)</span>
+            </span>
             <span class="stock-info" :class="{ warning: p.quantity >= p.stock }">
               Stock: {{ p.stock }}
             </span>
@@ -113,7 +122,7 @@ const cartCount = computed(() => {
             </div>
 
             <div class="item-subtotal">
-              S/ {{ (p.sale_price * p.quantity).toFixed(2) }}
+              S/ {{ (Number(p.sale_price) * p.quantity).toFixed(2) }}
             </div>
           </div>
 
@@ -320,17 +329,59 @@ const cartCount = computed(() => {
   transform: scale(1.05);
 }
 
+/* Weight Badge Container */
+.weight-badge-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.weight-badge {
+  display: inline-flex;
+  align-items: center;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #1e40af;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid #93c5fd;
+}
+
+.base-price-info {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 600;
+  background: white;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
 /* Item Details */
 .item-details {
   display: flex;
   gap: 12px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .unit-price {
   font-size: 13px;
   color: #64748b;
   font-weight: 600;
+}
+
+.weight-unit {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 700;
+  background: #f1f5f9;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 4px;
 }
 
 .stock-info {

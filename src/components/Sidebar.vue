@@ -277,24 +277,36 @@ onMounted(() => {
   background: #dc2626;
 }
 
-/* TOGGLE */
+/* TOGGLE PRO */
 .toggle {
   position: fixed;
-  top: 15px;
-  left: 15px;
-  z-index: 2001;
+  top: 8px;
+  left: 14px;
+  z-index: 1100;
+
   background: #1fa2c1;
   color: #fff;
   border: none;
-  padding: 12px 16px;
+  width: 42px;
+  height: 42px;
   font-size: 20px;
-  border-radius: 10px;
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.2s ease-in-out;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  backdrop-filter: blur(6px);
+
+  transition: all 0.25s ease;
 }
 
+/* Hover */
 .toggle:hover {
   background: #0ea5e9;
+  transform: scale(1.05);
 }
 
 /* RESPONSIVE */

@@ -19,6 +19,11 @@ const showProductListFallback = ref(false)
 const viewMode = ref('grid') // 'grid' o 'list'
 const categoryFilter = ref('all')
 
+// Nuevo: Modal de selección de peso
+const showWeightSelector = ref(false)
+const selectedProductForWeight = ref(null)
+const selectedWeight = ref(1) // 1 = 1kg, 0.5 = 1/2kg, 0.25 = 1/4kg
+
 const openProductFallback = () => {
   stopScanner()
   showProductListFallback.value = true
@@ -52,6 +57,22 @@ const filteredProducts = computed(() => {
   }
 
   return filtered
+})
+
+// Opciones de peso
+const weightOptions = [
+  { value: 1, label: '1 kg', fraction: '1' },
+  { value: 0.5, label: '1/2 kg', fraction: '1/2' },
+  { value: 0.25, label: '1/4 kg', fraction: '1/4' }
+]
+
+// Calcular precio según peso seleccionado
+const calculatedPrice = computed(() => {
+  if (!selectedProductForWeight.value) return 0
+  const basePrice = Number(selectedProductForWeight.value.sale_price)
+  const weight = Number(selectedWeight.value)
+  const calculated = basePrice * weight
+  return calculated.toFixed(2)
 })
 
 const paymentQRs = ref([])
@@ -190,9 +211,18 @@ onMounted(loadProducts)
 onBeforeUnmount(stopScanner)
 
 /* =========================
-   CARRITO
+   CARRITO - CON PESO
 ========================= */
 const addToCart = (product) => {
+  // Si es producto por peso, abrir selector
+  if (product.unit_type === 'WEIGHT') {
+    selectedProductForWeight.value = product
+    selectedWeight.value = 1 // Reset a 1kg
+    showWeightSelector.value = true
+    return
+  }
+
+  // Producto normal (unidades)
   const item = cart.value.find(p => p.id === product.id)
   if (item) {
     if (item.quantity < product.stock) item.quantity++
@@ -200,7 +230,8 @@ const addToCart = (product) => {
     cart.value.push({ 
       ...product, 
       quantity: 1, 
-      price: product.sale_price
+      price: product.sale_price,
+      weight: null // No tiene peso específico
     })
   }
 
@@ -214,6 +245,75 @@ const addToCart = (product) => {
   })
 }
 
+// Confirmar peso y agregar al carrito
+const confirmWeightSelection = () => {
+  if (!selectedProductForWeight.value) return
+
+  const product = selectedProductForWeight.value
+  const priceForWeight = parseFloat(calculatedPrice.value)
+  const weightLabel = weightOptions.find(w => w.value === selectedWeight.value)?.label
+
+  console.log('=== AGREGANDO PRODUCTO POR PESO ===')
+  console.log('Producto:', product.name)
+  console.log('Precio original (por kilo):', product.sale_price)
+  console.log('Peso seleccionado:', selectedWeight.value)
+  console.log('Precio calculado:', priceForWeight)
+  console.log('=====================================')
+
+  // Buscar si ya existe este producto con el mismo peso
+  const existingItem = cart.value.find(
+    p => p.id === product.id && p.weight === selectedWeight.value
+  )
+
+  if (existingItem) {
+    // Incrementar cantidad del mismo peso
+    existingItem.quantity++
+  } else {
+    // Crear nuevo objeto sin heredar sale_price original
+    const newItem = {
+      id: product.id,
+      name: product.name,
+      displayName: `${product.name} (${weightLabel})`,
+      image_url: product.image_url,
+      barcode: product.barcode,
+      category: product.category,
+      unit_type: product.unit_type,
+      user_id: product.user_id,
+      stock: product.stock,
+      // Precios calculados
+      sale_price: priceForWeight,
+      price: priceForWeight,
+      original_price: product.sale_price, // Precio del kilo completo
+      // Datos de peso
+      weight: selectedWeight.value,
+      is_weight_product: true,
+      quantity: 1
+    }
+    
+    console.log('Item agregado al carrito:', newItem)
+    cart.value.push(newItem)
+  }
+
+  Swal.fire({
+    toast: true,
+    position: 'top-end',
+    icon: 'success',
+    title: `${product.name} (${weightLabel}) añadido - S/ ${priceForWeight}`,
+    showConfirmButton: false,
+    timer: 1500
+  })
+
+  // Cerrar modal
+  showWeightSelector.value = false
+  selectedProductForWeight.value = null
+}
+
+const cancelWeightSelection = () => {
+  showWeightSelector.value = false
+  selectedProductForWeight.value = null
+  selectedWeight.value = 1
+}
+
 const removeFromCart = (id) => { cart.value = cart.value.filter(p => p.id !== id) }
 const increaseQty = (id) => { const item = cart.value.find(p => p.id === id); if (item && item.quantity < item.stock) item.quantity++ }
 const decreaseQty = (id) => { const item = cart.value.find(p => p.id === id); if (!item) return; item.quantity--; if (item.quantity <= 0) removeFromCart(id) }
@@ -221,7 +321,7 @@ const decreaseQty = (id) => { const item = cart.value.find(p => p.id === id); if
 /* =========================
    TOTAL
 ========================= */
-const total = computed(() => cart.value.reduce((sum, p) => sum + p.sale_price * p.quantity, 0))
+const total = computed(() => cart.value.reduce((sum, p) => sum + p.price * p.quantity, 0))
 
 /* =========================
    GUARDAR VENTA
@@ -252,12 +352,23 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
       })
     }
 
-    const items = cart.value.map(p => ({ sale_id: sale.id, product_id: p.id, quantity: p.quantity, price: p.sale_price, subtotal: p.sale_price * p.quantity }))
+    const items = cart.value.map(p => ({ 
+      sale_id: sale.id, 
+      product_id: p.id, 
+      quantity: p.quantity, 
+      price: p.price, 
+      subtotal: p.price * p.quantity 
+    }))
     const { error: itemsError } = await supabase.from('sale_items').insert(items)
     if (itemsError) throw itemsError
 
+    // Actualizar stock considerando el peso
     for (const p of cart.value) {
-      const { error: stockError } = await supabase.from('products').update({ stock: p.stock - p.quantity }).eq('id', p.id)
+      const stockToDeduct = p.weight ? p.weight * p.quantity : p.quantity
+      const { error: stockError } = await supabase
+        .from('products')
+        .update({ stock: p.stock - stockToDeduct })
+        .eq('id', p.id)
       if (stockError) throw stockError
     }
 
@@ -267,7 +378,11 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
     Swal.fire('Venta registrada', '', 'success')
   } catch (err) {
     console.error('ERROR GENERAL:', err)
-    Swal.fire({ icon: 'error', title: 'Error al guardar', html: `<p style="text-align:left;font-size:14px"><b>Mensaje:</b><br>${err?.message || 'Error desconocido'}</p>` })
+    Swal.fire({ 
+      icon: 'error', 
+      title: 'Error al guardar', 
+      html: `<p style="text-align:left;font-size:14px"><b>Mensaje:</b><br>${err?.message || 'Error desconocido'}</p>` 
+    })
   } finally {
     loading.value = false
   }
@@ -433,6 +548,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
               <h4>{{ p.name }}</h4>
               <div class="product-price">
                 <span class="price">S/ {{ p.sale_price }}</span>
+                <span v-if="p.unit_type === 'WEIGHT'" class="price-unit">/kg</span>
               </div>
             </div>
             <button class="btn-add-product">
@@ -464,7 +580,10 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
             <div class="row-content">
               <h4>{{ p.name }}</h4>
               <div class="row-details">
-                <span class="detail-price">S/ {{ p.sale_price }}</span>
+                <span class="detail-price">
+                  S/ {{ p.sale_price }}
+                  <span v-if="p.unit_type === 'WEIGHT'" class="unit-suffix">/kg</span>
+                </span>
                 <span class="detail-stock">Stock: {{ p.stock }}</span>
               </div>
             </div>
@@ -484,6 +603,67 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
             <path d="m21 21-4.35-4.35"></path>
           </svg>
           <p>No se encontraron productos</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Selector de Peso -->
+    <div v-if="showWeightSelector" class="modal-backdrop" @click.self="cancelWeightSelection">
+      <div class="modal-weight-selector">
+        <div class="weight-header">
+          <div>
+            <h3>{{ selectedProductForWeight?.name }}</h3>
+            <p class="weight-subtitle">Selecciona la cantidad de kilos</p>
+          </div>
+          <button @click="cancelWeightSelection" class="close-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div class="weight-content">
+          <!-- Precio base -->
+          <div class="base-price-info">
+            <span class="label">Precio por kilo:</span>
+            <span class="value">S/ {{ selectedProductForWeight?.sale_price }}</span>
+          </div>
+
+          <!-- Opciones de peso -->
+          <div class="weight-options">
+            <button
+              v-for="option in weightOptions"
+              :key="option.value"
+              @click="selectedWeight = option.value"
+              :class="{ active: selectedWeight === option.value }"
+              class="weight-option"
+            >
+              <div class="option-label">{{ option.label }}</div>
+              <div class="option-fraction">{{ option.fraction }} kg</div>
+              <div class="option-price">
+                S/ {{ (selectedProductForWeight?.sale_price * option.value).toFixed(2) }}
+              </div>
+            </button>
+          </div>
+
+          <!-- Precio calculado -->
+          <div class="calculated-price">
+            <div class="price-label">Precio a pagar:</div>
+            <div class="price-value">S/ {{ calculatedPrice }}</div>
+          </div>
+        </div>
+
+        <div class="weight-actions">
+          <button class="btn-cancel-weight" @click="cancelWeightSelection">
+            Cancelar
+          </button>
+          <button class="btn-confirm-weight" @click="confirmWeightSelection">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+            Agregar al carrito
+          </button>
         </div>
       </div>
     </div>
@@ -955,13 +1135,19 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 .product-price {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
 }
 
 .price {
   font-size: 20px;
   font-weight: 800;
   color: #0b3c5d;
+}
+
+.price-unit {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
 }
 
 .btn-add-product {
@@ -1072,6 +1258,12 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   color: #0b3c5d;
 }
 
+.unit-suffix {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+}
+
 .detail-stock {
   font-size: 14px;
   color: #64748b;
@@ -1106,6 +1298,218 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   transform: scale(1.08);
 }
 
+/* Modal Selector de Peso */
+.modal-weight-selector {
+  background: white;
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease-out;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.weight-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 24px;
+  border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.weight-header h3 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+}
+
+.weight-subtitle {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+}
+
+.weight-content {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.base-price-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8fafc;
+  padding: 16px 20px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+
+.base-price-info .label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.base-price-info .value {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0b3c5d;
+}
+
+.weight-options {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.weight-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: white;
+  border: 2px solid #e2e8f0;
+  padding: 18px 20px;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.weight-option:hover {
+  border-color: #0b3c5d;
+  background: #f8fafc;
+  transform: translateX(4px);
+}
+
+.weight-option.active {
+  border-color: #0b3c5d;
+  background: linear-gradient(135deg, #0b3c5d 0%, #1e5a7d 100%);
+}
+
+.weight-option.active .option-label,
+.weight-option.active .option-fraction,
+.weight-option.active .option-price {
+  color: white;
+}
+
+.option-label {
+  font-size: 18px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.option-fraction {
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.option-price {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0b3c5d;
+}
+
+.calculated-price {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border: 2px solid #86efac;
+  padding: 20px;
+  border-radius: 14px;
+  text-align: center;
+}
+
+.price-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #15803d;
+  margin-bottom: 8px;
+}
+
+.price-value {
+  font-size: 32px;
+  font-weight: 900;
+  color: #15803d;
+  letter-spacing: -1px;
+}
+
+.weight-actions {
+  padding: 20px 24px;
+  display: flex;
+  gap: 12px;
+  border-top: 1px solid #e2e8f0;
+  flex-shrink: 0;
+}
+
+.btn-cancel-weight {
+  flex: 1;
+  background: #f1f5f9;
+  color: #0f172a;
+  border: none;
+  padding: 16px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-cancel-weight:hover {
+  background: #e2e8f0;
+  transform: translateY(-1px);
+}
+
+.btn-confirm-weight {
+  flex: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  padding: 16px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.btn-confirm-weight svg {
+  width: 22px;
+  height: 22px;
+  stroke-width: 2.5;
+}
+
+.btn-confirm-weight:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+}
+
+.btn-confirm-weight:active {
+  transform: translateY(0);
+}
+
 /* Empty State */
 .empty-state {
   display: flex;
@@ -1131,18 +1535,21 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 
 /* Scrollbar */
 .products-grid::-webkit-scrollbar,
-.products-list::-webkit-scrollbar {
+.products-list::-webkit-scrollbar,
+.weight-content::-webkit-scrollbar {
   width: 8px;
 }
 
 .products-grid::-webkit-scrollbar-thumb,
-.products-list::-webkit-scrollbar-thumb {
+.products-list::-webkit-scrollbar-thumb,
+.weight-content::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 10px;
 }
 
 .products-grid::-webkit-scrollbar-thumb:hover,
-.products-list::-webkit-scrollbar-thumb:hover {
+.products-list::-webkit-scrollbar-thumb:hover,
+.weight-content::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
 
@@ -1180,10 +1587,15 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   }
 
   .modal-scanner,
-  .modal-products {
+  .modal-products,
+  .modal-weight-selector {
     max-width: 100%;
     max-height: 100vh;
     border-radius: 0;
+  }
+
+  .weight-options {
+    grid-template-columns: 1fr;
   }
 }
 </style>
