@@ -72,47 +72,98 @@ onMounted(() => {
     </div>
 
     <nav class="nav-items">
-     <button v-if="role !== 'admin'" @click="go('/')" class="btn">
-  Inicio
-</button>
 
-<button v-if="role !== 'admin'" @click="go('/sales')" class="btn">
-  Ventas
-</button>
+        <!-- =========================
+            GENERAL
+        ========================= -->
+        <div v-if="role !== 'admin'" class="nav-section">
+          <span class="section-title">GENERAL</span>
 
-<button v-if="role !== 'admin'" @click="go('/products')" class="btn">
-  Productos
-</button>
-
-<button v-if="role !== 'admin'" @click="go('/pos')" class="btn">
-  POS
-</button>
-
-<button v-if="role !== 'admin'" @click="go('/egresos')" class="btn">
-  Egresos
-</button>
-
-<button v-if="role !== 'admin'" @click="go('/capital')" class="btn">
-  Capital
-</button>
-
-<button v-if="role !== 'admin'" @click="go('/paymend-pending')" class="btn">
-  Cobros
-</button>
-
-<button v-if="role !== 'admin'" @click="go('/settings')" class="btn">
-  Configuración
-</button>
+          <button @click="go('/')" class="btn">
+            Inicio
+          </button>
+        </div>
 
 
-      <button v-if="role === 'admin'" @click="go('/users')" class="btn">
-        Usuarios
-      </button>
+        <!-- =========================
+            VENTAS
+        ========================= -->
+        <div v-if="role !== 'admin'" class="nav-section">
+          <span class="section-title">VENTAS</span>
 
-      <button class="btn logout" @click="logout">
-        🔒 Cerrar sesión
-      </button>
+          <button @click="go('/pos')" class="btn">
+            POS
+          </button>
+
+          <button @click="go('/sales')" class="btn">
+            Ventas
+          </button>
+
+          <button @click="go('/paymend-pending')" class="btn">
+            Cobros
+          </button>
+        </div>
+
+
+        <!-- =========================
+            INVENTARIO
+        ========================= -->
+        <div v-if="role !== 'admin'" class="nav-section">
+          <span class="section-title">INVENTARIO</span>
+
+          <button @click="go('/products')" class="btn">
+            Productos
+          </button>
+        </div>
+
+
+        <!-- =========================
+            FINANZAS
+        ========================= -->
+        <div v-if="role !== 'admin'" class="nav-section">
+          <span class="section-title">FINANZAS</span>
+
+          <button @click="go('/capital')" class="btn">
+            Capital
+          </button>
+
+          <button @click="go('/egresos')" class="btn">
+            Egresos
+          </button>
+        </div>
+
+
+        <!-- =========================
+            CONFIGURACIÓN
+        ========================= -->
+        <div v-if="role !== 'admin'" class="nav-section">
+          <span class="section-title">SISTEMA</span>
+
+          <button @click="go('/settings')" class="btn">
+            Configuración
+          </button>
+        </div>
+
+
+        <!-- =========================
+            ADMIN
+        ========================= -->
+        <div v-if="role === 'admin'" class="nav-section">
+          <span class="section-title">ADMINISTRACIÓN</span>
+
+          <button @click="go('/users')" class="btn">
+            Usuarios
+          </button>
+        </div>
+
+
+        <!-- LOGOUT -->
+        <button class="btn logout" @click="logout">
+          🔒 Cerrar sesión
+        </button>
+
     </nav>
+
   </aside>
 
   <!-- BOTÓN TOGGLE -->
@@ -136,7 +187,12 @@ onMounted(() => {
   flex-direction: column;
   padding: 20px;
   box-shadow: 2px 0 12px rgba(0, 0, 0, 0.25);
+
+  /* 👇 AGREGA ESTO */
+  overflow-y: auto;
+  overflow-x: hidden;
 }
+
 
 .sidebar.closed {
   transform: translateX(-100%);
@@ -169,6 +225,27 @@ onMounted(() => {
   flex-direction: column;
   gap: 12px;
 }
+
+/* =========================
+   SECCIONES
+========================= */
+.nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+/* TÍTULO DE SECCIÓN */
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: rgba(255,255,255,0.6);
+  padding: 0 6px;
+  margin-bottom: 4px;
+}
+
 
 .btn {
   display: flex;

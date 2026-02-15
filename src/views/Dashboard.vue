@@ -107,14 +107,12 @@
 
     <!-- ÚLTIMAS VENTAS -->
     <div class="table-card">
-      <h2>🛍️ Últimas ventas</h2>
+      <h2>° Últimas ventas</h2>
 
       <div class="table-wrapper" v-if="recentSales.length">
         <table class="responsive-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Cliente</th>
               <th>Total (S/)</th>
               <th>Ganancia (S/)</th>
               <th>Fecha</th>
@@ -122,8 +120,6 @@
           </thead>
           <tbody>
             <tr v-for="sale in paginatedSales" :key="sale.id">
-              <td><span class="badge">{{ sale.id }}</span></td>
-              <td>{{ sale.customer }}</td>
               <td class="amount-cell">S/ {{ sale.total }}</td>
               <td class="profit-cell">S/ {{ sale.profit }}</td>
               <td>{{ sale.date }}</td>
@@ -1014,9 +1010,14 @@ onMounted(loadDashboard);
   }
 
   .main-stats,
-  .dashboard-grid,
   .charts-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* 👇 AQUÍ EL CAMBIO */
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
   }
 
   .filters-content {
@@ -1037,4 +1038,5 @@ onMounted(loadDashboard);
     height: 220px !important;
   }
 }
+
 </style>

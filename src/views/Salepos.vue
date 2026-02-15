@@ -654,7 +654,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 }
 
 .close-btn {
-  width: 40px;
+  width: 60px;
   height: 40px;
   display: flex;
   align-items: center;
@@ -839,7 +839,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
+  width: 60px;
   height: 44px;
   background: transparent;
   border: none;

@@ -582,7 +582,7 @@ const uploadProductImage = async (file, productId) => {
       <div class="page-header">
         <div class="header-content">
           <h2>Productos</h2>
-          <p class="subtitle">{{ totalProducts }} productos · S/ {{ totalValue.toFixed(2) }} en inventario</p>
+          <p class="subtitle">{{ totalProducts }} productos en inventario</p>
         </div>
         <div class="header-actions">
           <button @click="showModal = true" class="btn-add">
@@ -1384,7 +1384,7 @@ const uploadProductImage = async (file, productId) => {
 }
 
 .close-btn {
-  width: 36px;
+  width: 50px;
   height: 36px;
   display: flex;
   align-items: center;
