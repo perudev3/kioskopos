@@ -141,8 +141,19 @@
     </div>
 
     <!-- PRODUCTOS BAJO STOCK -->
-    <div class="table-card alert-card" v-if="lowStockProducts.length">
-      <h2>⚠️ Productos a renovar stock</h2>
+    <div class="table-card alert-card-critical" v-if="lowStockProducts.length">
+      <div class="alert-header">
+        <h2>⚠️ ¡Alerta! Productos con stock crítico</h2>
+        <button @click="goToProducts" class="alert-action-btn">
+          📦 Ir a Productos
+        </button>
+      </div>
+      
+      <div class="critical-message">
+        <span class="critical-icon">🚨</span>
+        <p>Tienes <strong>{{ lowStockProducts.length }}</strong> producto(s) que necesitan reposición urgente</p>
+      </div>
+
       <div class="table-wrapper">
         <table class="responsive-table">
           <thead>
@@ -452,6 +463,10 @@ const loadDashboard = async () => {
     isLoading.value = false;
   }
 };
+
+  const goToProducts = () => {
+    window.location.href = '/products'; // O usa router.push('/products') si usas Vue Router
+  };
 
 /* =========================
    RESETEAR FILTROS
@@ -1039,4 +1054,110 @@ onMounted(loadDashboard);
   }
 }
 
+
+/* =========================
+   ALERTA CRÍTICA DE STOCK
+========================= */
+.table-card.alert-card-critical {
+  border: 3px solid #ef4444;
+  background: linear-gradient(135deg, #fff5f5, #ffffff);
+  box-shadow: 0 8px 20px rgba(239, 68, 68, 0.2);
+  animation: pulse-border 2s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    border-color: #ef4444;
+    box-shadow: 0 8px 20px rgba(239, 68, 68, 0.2);
+  }
+  50% {
+    border-color: #dc2626;
+    box-shadow: 0 8px 24px rgba(239, 68, 68, 0.35);
+  }
+}
+
+.alert-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.alert-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #dc2626;
+  margin: 0;
+}
+
+.alert-action-btn {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alert-action-btn:hover {
+  background: #dc2626;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.critical-message {
+  background: #fee2e2;
+  border: 2px solid #fca5a5;
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.critical-icon {
+  font-size: 24px;
+  line-height: 1;
+  animation: shake 0.5s ease-in-out infinite;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+
+.critical-message p {
+  margin: 0;
+  font-size: 14px;
+  color: #991b1b;
+  font-weight: 600;
+}
+
+.critical-message strong {
+  color: #7f1d1d;
+  font-size: 16px;
+}
+
+/* Responsive para móviles */
+@media (max-width: 768px) {
+  .alert-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .alert-action-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
 </style>
