@@ -47,6 +47,51 @@ const selectedAccountBalance = computed(() => {
     : availableProfitSale.value;
 });
 
+const salesByPaymentMethod = computed(() => {
+  const counts = {
+    efectivo: 0,
+    yape: 0,
+    plin: 0
+  };
+
+  sales.value.forEach(sale => {
+    const method = sale.payment_method?.toLowerCase();
+    if (method === 'cash') counts.efectivo += 1;
+    else if (method === 'yape') counts.yape += 1;
+    else if (method === 'plin') counts.plin += 1;
+  });
+
+  return counts;
+});
+
+const totalAmountByPaymentMethod = computed(() => {
+  const totals = {
+    efectivo: 0,
+    yape: 0,
+    plin: 0
+  };
+
+  sales.value.forEach(sale => {
+    const method = sale.payment_method?.toLowerCase();
+    const saleTotal = sale.sale_items?.reduce((sum, item) => {
+      const qty = Number(item.quantity || 0);
+      const price = Number(item.price || 0);
+      return sum + qty * price;
+    }, 0) || 0;
+
+    if (method === 'cash') totals.efectivo += saleTotal;
+    else if (method === 'yape') totals.yape += saleTotal;
+    else if (method === 'plin') totals.plin += saleTotal;
+  });
+
+  // Redondear a 2 decimales
+  totals.efectivo = Math.round(totals.efectivo * 100) / 100;
+  totals.yape = Math.round(totals.yape * 100) / 100;
+  totals.plin = Math.round(totals.plin * 100) / 100;
+
+  return totals;
+});
+
 /* =========================
    EXPORTAR BOLETA
 ========================= */
@@ -396,24 +441,53 @@ onMounted(loadSales);
     </div>
 
     <!-- RESUMEN -->
-    <div class="summary">
-      <div>Ventas: <strong>{{ totalSales }}</strong></div>
-      <div>Total: <strong>S/ {{ totalAmount.toFixed(2) }}</strong></div>
-      <div>
-        Ganancia neta: <strong>S/ {{ totalNetProfit.toFixed(2) }}</strong>
-        <small v-if="transferredAmounts.ganancia_neta > 0" style="display:block;font-size:11px;color:#64748b;">
-          Disponible: S/ {{ availableNetProfit.toFixed(2) }}
-        </small>
+    <div class="summary-compact">
+      <div class="summary-row">
+        <div class="summary-item">
+          <span class="title">Ventas:</span>
+          <span class="value">{{ totalSales }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="title">Total:</span>
+          <span class="value">S/ {{ totalAmount.toFixed(2) }}</span>
+        </div>
       </div>
-      <div>
-        Ganancia venta: <strong>S/ {{ totalProfitSale.toFixed(2) }}</strong>
-        <small v-if="transferredAmounts.ganancia_venta > 0" style="display:block;font-size:11px;color:#64748b;">
-          Disponible: S/ {{ availableProfitSale.toFixed(2) }}
-        </small>
+
+      <hr class="summary-separator" />
+
+      <div class="summary-row">
+        <div class="summary-item">
+          <span class="title">Ganancia Neta:</span>
+          <span class="value">S/ {{ totalNetProfit.toFixed(2) }}</span>
+          <small v-if="transferredAmounts.ganancia_neta > 0">
+            Disponible: S/ {{ availableNetProfit.toFixed(2) }}
+          </small>
+        </div>
+        <div class="summary-item">
+          <span class="title">Ganancia Venta:</span>
+          <span class="value">S/ {{ totalProfitSale.toFixed(2) }}</span>
+          <small v-if="transferredAmounts.ganancia_venta > 0">
+            Disponible: S/ {{ availableProfitSale.toFixed(2) }}
+          </small>
+        </div>
       </div>
-      <!-- <button style="margin-left: 8px;background: #0b3c5d; color: white;" @click="showProfitModal = true">
-        ↪ Pasar a capital
-      </button> -->
+
+      <hr class="summary-separator" />
+
+      <div class="summary-row">
+        <div class="summary-item">
+          <span class="title">Efectivo:</span>
+          <span class="value">S/ {{ totalAmountByPaymentMethod.efectivo.toFixed(2) }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="title">Yape:</span>
+          <span class="value">S/ {{ totalAmountByPaymentMethod.yape.toFixed(2) }}</span>
+        </div>
+        <div class="summary-item">
+          <span class="title">Plin:</span>
+          <span class="value">S/ {{ totalAmountByPaymentMethod.plin.toFixed(2) }}</span>
+        </div>
+      </div>
     </div>
 
     <!-- TABLA -->
@@ -747,5 +821,56 @@ onMounted(loadSales);
   .filters { flex-direction:column; align-items:stretch; } 
   .table-scroll { max-height:300px; } 
   .modal { max-width:92%; padding: 20px; }
+}
+
+.summary-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.summary-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.summary-item {
+  background: #ffffff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  flex: 1;
+  min-width: 120px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+}
+
+.summary-item .title {
+  color: #64748b;
+  font-weight: 500;
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+
+.summary-item .value {
+  color: #0b3c5d;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.summary-item small {
+  color: #64748b;
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.summary-separator {
+  border: none;
+  border-top: 1px solid #e2e8f0; /* color gris suave */
+  margin: 6px 0;
 }
 </style>
