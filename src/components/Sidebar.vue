@@ -7,11 +7,14 @@ const router = useRouter();
 const route = useRoute();
 const open = ref(false);
 const role = ref('');
+const userId = ref(null);
 
 const getUserRole = async () => {
   try {
     const { data: session } = await supabase.auth.getSession();
     if (!session?.session?.user) return;
+
+    userId.value = session.session.user.id;
 
     const { data: profile } = await supabase
       .from('profiles')
@@ -141,6 +144,22 @@ onMounted(() => {
 
           <button @click="go('/settings')" class="btn">
             Configuración
+          </button>
+        </div>
+
+
+        <!-- =========================
+            CATALOGO
+        ========================= -->
+        <div v-if="role !== 'admin'" class="nav-section">
+          <span class="section-title">CATÁLOGO</span>
+
+          <button
+            class="btn"
+            :disabled="!userId"
+            @click="go(`/catalogo-kiopos/${userId}`)"
+          >
+            {{ userId ? 'Generar Catálogo' : 'Cargando...' }}
           </button>
         </div>
 

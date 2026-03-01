@@ -11,6 +11,11 @@ const routes = [
     component: Login,
   },
   {
+    path: '/catalogo-kiopos/:storeId',
+    component: () => import('../views/CatalogoKioPos.vue'),
+    meta: { title: 'catalogo' },
+  },
+  {
     path: '/',
     component: DashboardLayout,
     meta: { requiresAuth: true },
@@ -64,7 +69,7 @@ const routes = [
         path: '/settings',
         component: () => import('../views/Settings.vue'),
         meta: { title: 'Configuraciones' },
-      },          
+      },                  
     ],
   },
 ];
