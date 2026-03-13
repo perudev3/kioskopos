@@ -7,6 +7,7 @@ const router = useRouter();
 const route = useRoute();
 const open = ref(false);
 const role = ref('');
+const plan = ref('');
 const userId = ref(null);
 
 const getUserRole = async () => {
@@ -18,11 +19,12 @@ const getUserRole = async () => {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, plan')
       .eq('id', session.session.user.id)
       .maybeSingle();
 
     role.value = profile?.role || 'admin';
+    plan.value = profile?.plan || 'basico';
   } catch (err) {
     console.error(err);
   }
@@ -75,18 +77,6 @@ onMounted(() => {
     </div>
 
     <nav class="nav-items">
-
-        <!-- =========================
-            GENERAL
-        ========================= -->
-        <div v-if="role !== 'admin'" class="nav-section">
-          <span class="section-title">GENERAL</span>
-
-          <button @click="go('/')" class="btn">
-            Inicio
-          </button>
-        </div>
-
 
         <!-- =========================
             VENTAS
@@ -151,7 +141,7 @@ onMounted(() => {
         <!-- =========================
             CATALOGO
         ========================= -->
-        <div v-if="role !== 'admin'" class="nav-section">
+        <div v-if="role !== 'admin' && plan === 'pro'" class="nav-section">
           <span class="section-title">CATÁLOGO</span>
 
           <button
