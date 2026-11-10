@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { supabase } from '../lib/supabase'
+import api from '../lib/axios'
 import Swal from 'sweetalert2'
 import SaleDetailModal from '../components/SaleDetailModal.vue'
 
@@ -16,10 +16,10 @@ const filteredSales = computed(() => {
 
   return sales.value.filter(sale => {
     const customer =
-      sale.clientes_por_cobrar?.[0]?.customer_name?.toLowerCase() || ''
+      sale.cliente_por_cobrar?.customer_name?.toLowerCase() || ''
 
-    const products = (sale.sale_items || [])
-      .map(item => item.products?.name?.toLowerCase() || '')
+    const products = (sale.items || [])
+      .map(item => item.product?.name?.toLowerCase() || '')
       .join(' ')
 
     return customer.includes(term) || products.includes(term)
@@ -28,37 +28,22 @@ const filteredSales = computed(() => {
 
 const totalPending = computed(() => {
   return filteredSales.value.reduce((sum, sale) => {
-    return sum + (sale.total || 0)
+    return sum + (Number(sale.total) || 0)
   }, 0)
 })
-
-
 
 const loadPendingSales = async () => {
   loading.value = true
 
-  const { data } = await supabase
-    .from('sales')
-    .select(`
-      id,
-      total,
-      created_at,
-      payment_method,
-      clientes_por_cobrar!inner(customer_name),
-      sale_items (
-        quantity,
-        products (
-          name
-        )
-      )
-    `)
-    .eq('payment_method', 'por_cobrar')
-    .order('created_at', { ascending: false })
-
-  sales.value = data || []
-  loading.value = false
+  try {
+    const response = await api.get('/pending-sales')
+    sales.value = response.data.sales || []
+  } catch (error) {
+    console.error('Error cargando cobros pendientes:', error)
+  } finally {
+    loading.value = false
+  }
 }
-
 
 const collectPayment = async (saleId) => {
   const { value: method } = await Swal.fire({
@@ -77,13 +62,17 @@ const collectPayment = async (saleId) => {
 
   if (!method) return
 
-  await supabase
-    .from('sales')
-    .update({ payment_method: method })
-    .eq('id', saleId)
+  try {
+    await api.patch(`/pending-sales/${saleId}/collect`, {
+      payment_method: method
+    })
 
-  Swal.fire('Pago registrado', '', 'success')
-  loadPendingSales()
+    Swal.fire('Pago registrado', '', 'success')
+    loadPendingSales()
+  } catch (error) {
+    console.error('Error al registrar cobro:', error)
+    Swal.fire('Error', 'No se pudo registrar el pago', 'error')
+  }
 }
 
 onMounted(loadPendingSales)
@@ -117,9 +106,9 @@ onMounted(loadPendingSales)
       <div class="sales-scroll">
         <div v-for="sale in filteredSales" :key="sale.id" class="card">
           <div class="info">
-            <div class="total">S/ {{ sale.total.toFixed(2) }}</div>
+            <div class="total">S/ {{ Number(sale.total).toFixed(2) }}</div>
             <div class="customer">
-              Cliente: {{ sale.clientes_por_cobrar[0]?.customer_name }}
+              Cliente: {{ sale.cliente_por_cobrar?.customer_name }}
             </div>
             <div class="date">
               {{ new Date(sale.created_at).toLocaleString() }}
@@ -137,8 +126,6 @@ onMounted(loadPendingSales)
           </button>
         </div>
       </div>
-
-
     </div>
   </div>
 
@@ -147,7 +134,6 @@ onMounted(loadPendingSales)
     :sale="selectedSale"
     @close="selectedSale = null"
   />
-
 </template>
 
 <style scoped>
@@ -236,15 +222,15 @@ h2 {
 }
 
 .receipt-btn {
-    background: #0b3c5d;
-    color: white;
-    border: none;
-    padding: 10px 16px;
-    border-radius: 12px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all .2s ease;
+  background: #0b3c5d;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s ease;
 }
 
 .receipt-btn:hover {
@@ -289,12 +275,11 @@ h2 {
 
 /* SCROLL LISTA */
 .sales-scroll {
-  max-height: 520px;   /* altura visible */
+  max-height: 520px;
   overflow-y: auto;
   padding-right: 6px;
 }
 
-/* Scroll bonito */
 .sales-scroll::-webkit-scrollbar {
   width: 8px;
 }
@@ -307,5 +292,4 @@ h2 {
 .sales-scroll::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
-
 </style>

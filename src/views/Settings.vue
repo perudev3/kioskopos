@@ -1,120 +1,3 @@
-<script setup>
-import { ref, onMounted } from 'vue'
-import { supabase } from '@/supabase'
-
-const methods = [
-  { key: 'yape', label: 'Yape', color: '#7b1fa2' },
-  { key: 'plin', label: 'Plin', color: '#0d47a1' }
-]
-
-const userId = ref(null)
-const loading = ref(false)
-const message = ref('')
-
-const form = ref({
-  yape: { display_name: '', phone_number: '', qr_url: '', file: null },
-  plin: { display_name: '', phone_number: '', qr_url: '', file: null }
-})
-
-onMounted(async () => {
-  const { data } = await supabase.auth.getUser()
-  userId.value = data.user.id
-  loadQRs()
-})
-
-const loadQRs = async () => {
-  const { data } = await supabase
-    .from('payment_qrs')
-    .select('*')
-    .eq('user_id', userId.value)
-
-  data?.forEach(qr => {
-    form.value[qr.method] = {
-      ...form.value[qr.method],
-      display_name: qr.display_name,
-      phone_number: qr.phone_number,
-      qr_url: qr.qr_url
-    }
-  })
-}
-
-const onFileChange = (e, method) => {
-  const file = e.target.files[0]
-
-  if (!file) return
-
-  if (!file.type.startsWith('image/')) {
-    alert('Solo se permiten imágenes')
-    return
-  }
-
-  if (file.size > 2 * 1024 * 1024) {
-    alert('Máximo 2MB')
-    return
-  }
-
-  form.value[method].file = file
-}
-
-
-const uploadQR = async (method) => {
-  const file = form.value[method].file
-  if (!file) return form.value[method].qr_url
-
-  const filePath = `${userId.value}/${method}.png`
-
-  const { error } = await supabase.storage
-    .from('payment-qrs')
-    .upload(filePath, file, {
-      upsert: true,
-      contentType: file.type
-    })
-
-  if (error) throw error
-
-  const { data } = supabase.storage
-    .from('payment-qrs')
-    .getPublicUrl(filePath)
-
-  return data.publicUrl
-}
-
-const saveQR = async (method) => {
-  try {
-    loading.value = true
-    message.value = ''
-
-    const qr_url = await uploadQR(method)
-
-    const { error } = await supabase
-      .from('payment_qrs')
-      .upsert(
-        {
-          user_id: userId.value,
-          method,
-          display_name: form.value[method].display_name,
-          phone_number: form.value[method].phone_number,
-          qr_url: qr_url
-        },
-        {
-          onConflict: 'user_id,method'
-        }
-      )
-
-    if (error) throw error
-
-    form.value[method].qr_url = qr_url
-    message.value = `✔ QR de ${method.toUpperCase()} guardado`
-  } catch (e) {
-    message.value = '❌ Error al guardar el QR'
-    console.error(e)
-  } finally {
-    loading.value = false
-  }
-}
-
-</script>
-
 <template>
   <div class="container">
     <h2>💳 Métodos de pago</h2>
@@ -157,6 +40,103 @@ const saveQR = async (method) => {
     <p v-if="message" class="message">{{ message }}</p>
   </div>
 </template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import api from '../lib/axios'
+
+const methods = [
+  { key: 'yape', label: 'Yape', color: '#7b1fa2' },
+  { key: 'plin', label: 'Plin', color: '#0d47a1' }
+]
+
+const loading = ref(false)
+const message = ref('')
+
+const form = ref({
+  yape: { display_name: '', phone_number: '', qr_url: '', file: null },
+  plin: { display_name: '', phone_number: '', qr_url: '', file: null }
+})
+
+onMounted(() => {
+  loadQRs()
+})
+
+const loadQRs = async () => {
+  try {
+    const response = await api.get('/payment-qrs')
+    const data = response.data
+
+    data.forEach(qr => {
+      if (form.value[qr.method]) {
+        form.value[qr.method] = {
+          ...form.value[qr.method],
+          display_name: qr.display_name,
+          phone_number: qr.phone_number,
+          qr_url: qr.qr_url
+        }
+      }
+    })
+  } catch (error) {
+    console.error('Error al cargar los QRs:', error)
+  }
+}
+
+const onFileChange = (e, method) => {
+  const file = e.target.files[0]
+
+  if (!file) return
+
+  if (!file.type.startsWith('image/')) {
+    alert('Solo se permiten imágenes')
+    return
+  }
+
+  if (file.size > 2 * 1024 * 1024) {
+    alert('Máximo 2MB')
+    return
+  }
+
+  form.value[method].file = file
+}
+
+const saveQR = async (method) => {
+  try {
+    loading.value = true
+    message.value = ''
+
+    const formData = new FormData()
+    formData.append('method', method)
+    formData.append('display_name', form.value[method].display_name)
+    formData.append('phone_number', form.value[method].phone_number)
+    
+    if (form.value[method].file) {
+      formData.append('qr_file', form.value[method].file)
+    }
+
+    const response = await api.post('/payment-qrs', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+
+    // Actualizar la URL del QR devuelta por el servidor
+    if (response.data.data && response.data.data.qr_url) {
+      form.value[method].qr_url = response.data.data.qr_url
+    }
+    
+    // Limpiar el archivo temporal en el estado
+    form.value[method].file = null
+
+    message.value = `✔ QR de ${method.toUpperCase()} guardado`
+  } catch (e) {
+    message.value = '❌ Error al guardar el QR'
+    console.error(e)
+  } finally {
+    loading.value = false
+  }
+}
+</script>
 
 <style scoped>
 .container {

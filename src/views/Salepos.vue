@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick , watch } from 'vue'
-import { supabase } from '../lib/supabase'
+import html2canvas from 'html2canvas'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import api from '../lib/axios'
 import Swal from 'sweetalert2'
 import Quagga from 'quagga'
 
@@ -76,23 +77,6 @@ const calculatedPrice = computed(() => {
 })
 
 const paymentQRs = ref([])
-
-const loadPaymentQRs = async () => {
-  if (!user.value?.id) return
-
-  const { data, error } = await supabase
-    .from('payment_qrs')
-    .select('*')
-    .eq('user_id', user.value.id)
-    .eq('active', true)
-
-  if (error) {
-    console.error('ERROR QR:', error)
-    return
-  }
-
-  paymentQRs.value = data || []
-}
 
 watch(paymentMethod, (method) => {
   if (method === 'yape' || method === 'plin') {
@@ -190,21 +174,20 @@ const onDetected = (data) => {
 }
 
 /* =========================
-   CARGAR PRODUCTOS
+   CARGAR PRODUCTOS DESDE LA API
 ========================= */
 const loadProducts = async () => {
-  const { data: auth } = await supabase.auth.getUser()
-  user.value = auth.user
+  try {
+    const userStr = localStorage.getItem('kiopos_user')
+    user.value = userStr ? JSON.parse(userStr) : null
 
-  const { data } = await supabase
-    .from('products')
-    .select('*')
-    .eq('user_id', user.value.id)
-    .gt('stock', 0)
+    const response = await api.get('/pos/data')
+    products.value = response.data.products || []
+    paymentQRs.value = response.data.paymentQRs || []
 
-  products.value = data || []
-
-  await loadPaymentQRs()
+  } catch (error) {
+    console.error('Error cargando datos del POS:', error)
+  }
 }
 
 onMounted(loadProducts)
@@ -214,15 +197,13 @@ onBeforeUnmount(stopScanner)
    CARRITO - CON PESO
 ========================= */
 const addToCart = (product) => {
-  // Si es producto por peso, abrir selector
   if (product.unit_type === 'WEIGHT') {
     selectedProductForWeight.value = product
-    selectedWeight.value = 1 // Reset a 1kg
+    selectedWeight.value = 1
     showWeightSelector.value = true
     return
   }
 
-  // Producto normal (unidades)
   const item = cart.value.find(p => p.id === product.id)
   if (item) {
     if (item.quantity < product.stock) item.quantity++
@@ -231,7 +212,7 @@ const addToCart = (product) => {
       ...product, 
       quantity: 1, 
       price: product.sale_price,
-      weight: null // No tiene peso específico
+      weight: null 
     })
   }
 
@@ -245,7 +226,6 @@ const addToCart = (product) => {
   })
 }
 
-// Confirmar peso y agregar al carrito
 const confirmWeightSelection = () => {
   if (!selectedProductForWeight.value) return
 
@@ -253,23 +233,13 @@ const confirmWeightSelection = () => {
   const priceForWeight = parseFloat(calculatedPrice.value)
   const weightLabel = weightOptions.find(w => w.value === selectedWeight.value)?.label
 
-  console.log('=== AGREGANDO PRODUCTO POR PESO ===')
-  console.log('Producto:', product.name)
-  console.log('Precio original (por kilo):', product.sale_price)
-  console.log('Peso seleccionado:', selectedWeight.value)
-  console.log('Precio calculado:', priceForWeight)
-  console.log('=====================================')
-
-  // Buscar si ya existe este producto con el mismo peso
   const existingItem = cart.value.find(
     p => p.id === product.id && p.weight === selectedWeight.value
   )
 
   if (existingItem) {
-    // Incrementar cantidad del mismo peso
     existingItem.quantity++
   } else {
-    // Crear nuevo objeto sin heredar sale_price original
     const newItem = {
       id: product.id,
       name: product.name,
@@ -280,17 +250,14 @@ const confirmWeightSelection = () => {
       unit_type: product.unit_type,
       user_id: product.user_id,
       stock: product.stock,
-      // Precios calculados
       sale_price: priceForWeight,
       price: priceForWeight,
-      original_price: product.sale_price, // Precio del kilo completo
-      // Datos de peso
+      original_price: product.sale_price,
       weight: selectedWeight.value,
       is_weight_product: true,
       quantity: 1
     }
     
-    console.log('Item agregado al carrito:', newItem)
     cart.value.push(newItem)
   }
 
@@ -303,7 +270,6 @@ const confirmWeightSelection = () => {
     timer: 1500
   })
 
-  // Cerrar modal
   showWeightSelector.value = false
   selectedProductForWeight.value = null
 }
@@ -324,64 +290,40 @@ const decreaseQty = (id) => { const item = cart.value.find(p => p.id === id); if
 const total = computed(() => cart.value.reduce((sum, p) => sum + p.price * p.quantity, 0))
 
 /* =========================
-   GUARDAR VENTA
+   GUARDAR VENTA EN LA API
 ========================= */
 const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   if (!cart.value.length) return Swal.fire('Carrito vacío', 'Agrega productos', 'warning')
   loading.value = true
+
   try {
-    const { data: sale, error: saleError } = await supabase.from('sales').insert({
-      user_id: user.value.id,
-      total: total.value,
-      payment_method: paymentMethod.value
-    }).select().single()
-    if (saleError) throw saleError
-
-    if (paymentMethod.value === 'por_cobrar') {
-      if (!customer_name || !customer_name.trim()) {
-        Swal.fire('Error', 'Debes ingresar el nombre del cliente', 'warning')
-        return
-      }
-
-      await supabase.from('clientes_por_cobrar').insert({
-        user_id: user.value.id,
-        sale_id: sale.id,
-        customer_name: customer_name.trim(),
-        customer_phone: customer_phone?.trim() || null,
-        comment: comment?.trim() || null
-      })
-    }
-
-    const items = cart.value.map(p => ({ 
-      sale_id: sale.id, 
-      product_id: p.id, 
-      quantity: p.quantity, 
-      price: p.price, 
-      subtotal: p.price * p.quantity 
+    const itemsPayload = cart.value.map(p => ({
+      product_id: p.id,
+      quantity: p.quantity,
+      price: p.price,
+      weight: p.weight || null
     }))
-    const { error: itemsError } = await supabase.from('sale_items').insert(items)
-    if (itemsError) throw itemsError
 
-    // Actualizar stock considerando el peso
-    for (const p of cart.value) {
-      const stockToDeduct = p.weight ? p.weight * p.quantity : p.quantity
-      const { error: stockError } = await supabase
-        .from('products')
-        .update({ stock: p.stock - stockToDeduct })
-        .eq('id', p.id)
-      if (stockError) throw stockError
-    }
+    await api.post('/pos/sales', {
+      total: total.value,
+      payment_method: paymentMethod.value,
+      items: itemsPayload,
+      customer_name: customer_name || null,
+      customer_phone: customer_phone || null,
+      comment: comment || null
+    })
 
     cart.value = []
     showPayment.value = false
     await loadProducts()
     Swal.fire('Venta registrada', '', 'success')
+
   } catch (err) {
     console.error('ERROR GENERAL:', err)
     Swal.fire({ 
       icon: 'error', 
       title: 'Error al guardar', 
-      html: `<p style="text-align:left;font-size:14px"><b>Mensaje:</b><br>${err?.message || 'Error desconocido'}</p>` 
+      html: `<p style="text-align:left;font-size:14px"><b>Mensaje:</b><br>${err?.response?.data?.message || err?.message || 'Error desconocido'}</p>` 
     })
   } finally {
     loading.value = false
@@ -624,13 +566,11 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
         </div>
 
         <div class="weight-content">
-          <!-- Precio base -->
           <div class="base-price-info">
             <span class="label">Precio por kilo:</span>
             <span class="value">S/ {{ selectedProductForWeight?.sale_price }}</span>
           </div>
 
-          <!-- Opciones de peso -->
           <div class="weight-options">
             <button
               v-for="option in weightOptions"
@@ -647,7 +587,6 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
             </button>
           </div>
 
-          <!-- Precio calculado -->
           <div class="calculated-price">
             <div class="price-label">Precio a pagar:</div>
             <div class="price-value">S/ {{ calculatedPrice }}</div>
@@ -1284,52 +1223,47 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   border-radius: 12px;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.2s ease;
-}
-
-.btn-add-row svg {
-  width: 24px;
-  height: 24px;
-  stroke-width: 3;
+  transition: background 0.2s;
 }
 
 .btn-add-row:hover {
   background: #1e5a7d;
-  transform: scale(1.08);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #94a3b8;
+  gap: 16px;
+}
+
+.empty-state p {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
 }
 
 /* Modal Selector de Peso */
 .modal-weight-selector {
   background: white;
   width: 100%;
-  max-width: 500px;
-  max-height: 90vh;
+  max-width: 450px;
   border-radius: 24px;
   overflow: hidden;
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
-  animation: slideUp 0.3s ease-out;
   display: flex;
   flex-direction: column;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .weight-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 24px;
+  padding: 20px 24px;
   border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0;
 }
 
 .weight-header h3 {
@@ -1347,8 +1281,6 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 
 .weight-content {
   padding: 24px;
-  overflow-y: auto;
-  flex: 1;
 }
 
 .base-price-info {
@@ -1356,51 +1288,49 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   justify-content: space-between;
   align-items: center;
   background: #f8fafc;
-  padding: 16px 20px;
+  padding: 12px 16px;
   border-radius: 12px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .base-price-info .label {
   font-size: 14px;
-  font-weight: 600;
   color: #64748b;
+  font-weight: 500;
 }
 
 .base-price-info .value {
-  font-size: 20px;
-  font-weight: 800;
-  color: #0b3c5d;
+  font-size: 16px;
+  color: #0f172a;
+  font-weight: 700;
 }
 
 .weight-options {
   display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   margin-bottom: 24px;
 }
 
 .weight-option {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  background: white;
+  background: #f8fafc;
   border: 2px solid #e2e8f0;
-  padding: 18px 20px;
   border-radius: 14px;
+  padding: 16px 12px;
+  text-align: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  text-align: left;
 }
 
 .weight-option:hover {
   border-color: #0b3c5d;
-  background: #f8fafc;
-  transform: translateX(4px);
+  background: #f0f9ff;
 }
 
 .weight-option.active {
   border-color: #0b3c5d;
-  background: linear-gradient(135deg, #0b3c5d 0%, #1e5a7d 100%);
+  background: #0b3c5d;
+  color: white;
 }
 
 .weight-option.active .option-label,
@@ -1410,61 +1340,61 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 }
 
 .option-label {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: #0f172a;
   margin-bottom: 4px;
 }
 
 .option-fraction {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 12px;
   color: #64748b;
   margin-bottom: 8px;
 }
 
 .option-price {
-  font-size: 24px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
   color: #0b3c5d;
 }
 
 .calculated-price {
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-  border: 2px solid #86efac;
-  padding: 20px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border: 2px solid #bae6fd;
   border-radius: 14px;
+  padding: 16px;
   text-align: center;
 }
 
 .price-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: #15803d;
-  margin-bottom: 8px;
+  color: #0369a1;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
 }
 
 .price-value {
-  font-size: 32px;
-  font-weight: 900;
-  color: #15803d;
-  letter-spacing: -1px;
+  font-size: 28px;
+  font-weight: 800;
+  color: #0c4a6e;
 }
 
 .weight-actions {
   padding: 20px 24px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
   display: flex;
   gap: 12px;
-  border-top: 1px solid #e2e8f0;
-  flex-shrink: 0;
 }
 
 .btn-cancel-weight {
   flex: 1;
-  background: #f1f5f9;
-  color: #0f172a;
-  border: none;
-  padding: 16px;
+  background: white;
+  color: #64748b;
+  border: 2px solid #e2e8f0;
+  padding: 14px;
   border-radius: 12px;
   font-size: 15px;
   font-weight: 600;
@@ -1473,129 +1403,33 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 }
 
 .btn-cancel-weight:hover {
-  background: #e2e8f0;
-  transform: translateY(-1px);
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 .btn-confirm-weight {
-  flex: 2;
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  gap: 8px;
+  background: #0b3c5d;
   color: white;
   border: none;
-  padding: 16px;
+  padding: 14px;
   border-radius: 12px;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .btn-confirm-weight svg {
-  width: 22px;
-  height: 22px;
   stroke-width: 2.5;
 }
 
 .btn-confirm-weight:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
-}
-
-.btn-confirm-weight:active {
-  transform: translateY(0);
-}
-
-/* Empty State */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  color: #94a3b8;
-}
-
-.empty-state svg {
-  width: 80px;
-  height: 80px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-  stroke-width: 1.5;
-}
-
-.empty-state p {
-  margin: 0;
-  font-size: 16px;
-}
-
-/* Scrollbar */
-.products-grid::-webkit-scrollbar,
-.products-list::-webkit-scrollbar,
-.weight-content::-webkit-scrollbar {
-  width: 8px;
-}
-
-.products-grid::-webkit-scrollbar-thumb,
-.products-list::-webkit-scrollbar-thumb,
-.weight-content::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 10px;
-}
-
-.products-grid::-webkit-scrollbar-thumb:hover,
-.products-list::-webkit-scrollbar-thumb:hover,
-.weight-content::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Responsive */
-@media (max-width: 768px) {
-  .pos-layout {
-    padding: 16px;
-  }
-
-  .header-content h1 {
-    font-size: 24px;
-  }
-
-  .header-actions {
-    width: 100%;
-  }
-
-  .btn-scan,
-  .btn-products {
-    flex: 1;
-    justify-content: center;
-  }
-
-  .filters-section {
-    flex-direction: column;
-  }
-
-  .search-box {
-    min-width: 100%;
-  }
-
-  .products-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 12px;
-  }
-
-  .modal-scanner,
-  .modal-products,
-  .modal-weight-selector {
-    max-width: 100%;
-    max-height: 100vh;
-    border-radius: 0;
-  }
-
-  .weight-options {
-    grid-template-columns: 1fr;
-  }
+  background: #1e5a7d;
+  transform: translateY(-1px);
 }
 </style>

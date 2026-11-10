@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from 'vue';
-import { Document, Packer, Paragraph, ImageRun, TextRun } from 'docx';
-import { supabase } from '../lib/supabase';
+import { Document, Packer, Paragraph, ImageRun } from 'docx';
+import api from '../lib/axios';
 import JsBarcode from 'jsbarcode';
 import Swal from 'sweetalert2';
 
@@ -84,125 +84,23 @@ const printAllBarcodes = async () => {
       <head>
         <title>Códigos de Barras - Productos</title>
         <style>
-          * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-          }
-
-          @page {
-            size: A4;
-            margin: 10mm;
-          }
-
-          body {
-            font-family: Arial, sans-serif;
-            background: white;
-          }
-
-          .page-container {
-            width: 100%;
-            padding: 10mm;
-          }
-
-          .grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 8mm;
-            page-break-inside: avoid;
-          }
-
-          .barcode-card {
-            border: 2px solid #333;
-            padding: 8mm;
-            background: white;
-            page-break-inside: avoid;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 120mm;
-            justify-content: space-between;
-          }
-
-          .product-info {
-            width: 100%;
-            text-align: center;
-            margin-bottom: 4mm;
-          }
-
-          .product-name {
-            font-size: 14pt;
-            font-weight: bold;
-            color: #000;
-            margin-bottom: 3mm;
-            word-wrap: break-word;
-            line-height: 1.3;
-          }
-
-          .product-details {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 2mm;
-            width: 100%;
-            margin-top: 3mm;
-            padding: 3mm;
-            background: #f5f5f5;
-            border-radius: 3mm;
-          }
-
-          .detail-item {
-            text-align: left;
-            font-size: 10pt;
-          }
-
-          .detail-label {
-            color: #666;
-            font-size: 9pt;
-            display: block;
-            margin-bottom: 1mm;
-          }
-
-          .detail-value {
-            font-weight: bold;
-            color: #000;
-            font-size: 11pt;
-          }
-
-          .barcode-container {
-            width: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            margin: 4mm 0;
-          }
-
-          canvas {
-            max-width: 100%;
-            height: auto;
-          }
-
-          .barcode-code {
-            text-align: center;
-            font-size: 9pt;
-            color: #666;
-            margin-top: 2mm;
-            font-family: 'Courier New', monospace;
-          }
-
-          .page-break {
-            page-break-after: always;
-          }
-
-          @media print {
-            body {
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-
-            .barcode-card {
-              break-inside: avoid;
-            }
-          }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          @page { size: A4; margin: 10mm; }
+          body { font-family: Arial, sans-serif; background: white; }
+          .page-container { width: 100%; padding: 10mm; }
+          .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8mm; page-break-inside: avoid; }
+          .barcode-card { border: 2px solid #333; padding: 8mm; background: white; page-break-inside: avoid; display: flex; flex-direction: column; align-items: center; min-height: 120mm; justify-content: space-between; }
+          .product-info { width: 100%; text-align: center; margin-bottom: 4mm; }
+          .product-name { font-size: 14pt; font-weight: bold; color: #000; margin-bottom: 3mm; word-wrap: break-word; line-height: 1.3; }
+          .product-details { display: grid; grid-template-columns: 1fr 1fr; gap: 2mm; width: 100%; margin-top: 3mm; padding: 3mm; background: #f5f5f5; border-radius: 3mm; }
+          .detail-item { text-align: left; font-size: 10pt; }
+          .detail-label { color: #666; font-size: 9pt; display: block; margin-bottom: 1mm; }
+          .detail-value { font-weight: bold; color: #000; font-size: 11pt; }
+          .barcode-container { width: 100%; display: flex; justify-content: center; align-items: center; margin: 4mm 0; }
+          canvas { max-width: 100%; height: auto; }
+          .barcode-code { text-align: center; font-size: 9pt; color: #666; margin-top: 2mm; font-family: 'Courier New', monospace; }
+          .page-break { page-break-after: always; }
+          @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
         </style>
       </head>
       <body>
@@ -214,27 +112,24 @@ const printAllBarcodes = async () => {
   `;
 
   function generateBarcodePages() {
-    let html = '';
+    let htmlContent = '';
     const itemsPerPage = 4;
     
     for (let i = 0; i < products.value.length; i += itemsPerPage) {
       const pageProducts = products.value.slice(i, i + itemsPerPage);
       
-      html += '<div class="grid">';
+      htmlContent += '<div class="grid">';
       
       pageProducts.forEach(p => {
-        html += `
+        htmlContent += `
           <div class="barcode-card">
             <div class="product-info">
               <div class="product-name">${p.name}</div>
             </div>
-
             <div class="barcode-container">
               <canvas id="barcode-${p.id}"></canvas>
             </div>
-
             <div class="barcode-code">Código: ${p.barcode}</div>
-
             <div class="product-details">
               <div class="detail-item">
                 <span class="detail-label">Precio Base</span>
@@ -257,14 +152,13 @@ const printAllBarcodes = async () => {
         `;
       });
       
-      html += '</div>';
+      htmlContent += '</div>';
       
       if (i + itemsPerPage < products.value.length) {
-        html += '<div class="page-break"></div>';
+        htmlContent += '<div class="page-break"></div>';
       }
     }
-    
-    return html;
+    return htmlContent;
   }
 
   printWindow.document.write(html);
@@ -293,7 +187,7 @@ const printAllBarcodes = async () => {
 };
 
 /* =========================
-   FORMULARIO
+   FORMULARIO Y ESTADO
 ========================= */
 const name = ref('');
 const price = ref('');
@@ -301,8 +195,8 @@ const sale_price = ref('');
 const stock = ref('');
 const unit_type = ref('UNIT');
 const file = ref(null);
-
 const imageFile = ref(null);
+
 const imagePreview = computed(() => {
   if (imageFile.value) return URL.createObjectURL(imageFile.value);
   if (editingProduct.value && editingProduct.value.image_url) return editingProduct.value.image_url;
@@ -314,81 +208,61 @@ const onFileChange = (e) => {
   file.value = imageFile.value;
 };
 
-/* =========================
-   ESTADO GENERAL
-========================= */
 const products = ref([]);
 const showModal = ref(false);
-const user = ref(null);
 const filterName = ref('');
 const viewMode = ref('grid');
-
-/* =========================
-   EDICIÓN
-========================= */
 const editingProduct = ref(null);
 
 /* =========================
-   GUARDAR / ACTUALIZAR
+   GUARDAR / ACTUALIZAR EN API
 ========================= */
 const saveProduct = async () => {
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
-
-  let productId = editingProduct.value?.id;
   const isEditing = !!editingProduct.value;
-
-  if (editingProduct.value) {
-    await supabase
-      .from('products')
-      .update({
-        name: name.value,
-        price: price.value,
-        sale_price: sale_price.value,
-        stock: stock.value,
-        unit_type: unit_type.value,
-      })
-      .eq('id', productId);
-  } else {
-    const { data } = await supabase
-      .from('products')
-      .insert({
-        name: name.value,
-        price: price.value,
-        sale_price: sale_price.value,
-        stock: stock.value,
-        unit_type: unit_type.value,
-        user_id: authUser.id,
-        barcode: 'KP-' + Date.now(),
-      })
-      .select()
-      .single();
-
-    productId = data.id;
-  }
+  const formData = new FormData();
+  
+  formData.append('name', name.value);
+  formData.append('price', price.value);
+  formData.append('sale_price', sale_price.value);
+  formData.append('stock', stock.value);
+  formData.append('unit_type', unit_type.value);
 
   if (imageFile.value) {
-    const imageUrl = await uploadProductImage(imageFile.value, productId);
-    await supabase.from('products').update({ image_url: imageUrl + '?t=' + Date.now() }).eq('id', productId);
+    formData.append('image', imageFile.value);
   }
 
-  name.value = '';
-  price.value = '';
-  sale_price.value = '';
-  stock.value = '';
-  unit_type.value = 'UNIT';
-  imageFile.value = null;
-  editingProduct.value = null;
-  showModal.value = false;
+  try {
+    if (isEditing) {
+      // Usamos POST con _method si fuera necesario, o ruta específica de actualización en Laravel
+      await api.post(`/products/${editingProduct.value.id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    } else {
+      await api.post('/products', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+    }
 
-  await loadProducts();
-  
-  Swal.fire(
-    'Éxito',
-    isEditing ? 'Producto actualizado' : 'Producto registrado',
-    'success'
-  );
+    name.value = '';
+    price.value = '';
+    sale_price.value = '';
+    stock.value = '';
+    unit_type.value = 'UNIT';
+    imageFile.value = null;
+    editingProduct.value = null;
+    showModal.value = false;
+
+    await loadProducts();
+    
+    Swal.fire(
+      'Éxito',
+      isEditing ? 'Producto actualizado' : 'Producto registrado',
+      'success'
+    );
+  } catch (error) {
+    console.error('Error guardando producto:', error);
+    Swal.fire('Error', error.response?.data?.message || 'No se pudo guardar el producto', 'error');
+  }
 };
 
 /* =========================
@@ -460,9 +334,6 @@ const filteredProducts = computed(() =>
 );
 
 const totalProducts = computed(() => products.value.length);
-const totalValue = computed(() => 
-  products.value.reduce((sum, p) => sum + (Number(p.price) * Number(p.stock)), 0)
-);
 
 /* =========================
    GENERAR BARCODES
@@ -489,9 +360,6 @@ const generateBarcodes = async () => {
   });
 };
 
-/* =========================
-   WATCHERS
-========================= */
 watch(filteredProducts, () => {
   generateBarcodes();
 });
@@ -501,23 +369,16 @@ watch(viewMode, () => {
 });
 
 /* =========================
-   CARGAR PRODUCTOS
+   CARGAR PRODUCTOS DESDE API
 ========================= */
 const loadProducts = async () => {
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
-  user.value = authUser;
-
-  const { data } = await supabase
-    .from('products')
-    .select('*')
-    .eq('user_id', user.value.id)
-    .order('created_at', { ascending: false });
-
-  products.value = data || [];
-  
-  await generateBarcodes();
+  try {
+    const response = await api.get('/products');
+    products.value = response.data.products || [];
+    await generateBarcodes();
+  } catch (error) {
+    console.error('Error cargando productos:', error);
+  }
 };
 
 /* =========================
@@ -536,42 +397,13 @@ const deleteProduct = async (product) => {
 
   if (!confirm.isConfirmed) return;
 
-  const { error } = await supabase
-    .from('products')
-    .delete()
-    .eq('id', product.id);
-
-  if (error) {
+  try {
+    await api.delete(`/products/${product.id}`);
+    Swal.fire('Eliminado', 'Producto eliminado correctamente', 'success');
+    loadProducts();
+  } catch (error) {
     Swal.fire('Error', 'No se pudo eliminar el producto', 'error');
-    console.error(error);
-    return;
   }
-
-  Swal.fire('Eliminado', 'Producto eliminado correctamente', 'success');
-
-  loadProducts();
-};
-
-const uploadProductImage = async (file, productId) => {
-  if (!file) return null;
-
-  const ext = file.name.split('.').pop();
-  const filePath = `${productId}.${ext}`;
-
-  const { error } = await supabase.storage
-    .from('products')
-    .upload(filePath, file, {
-      upsert: true,
-      contentType: file.type,
-    });
-
-  if (error) throw error;
-
-  const { data } = supabase.storage
-    .from('products')
-    .getPublicUrl(filePath);
-
-  return data.publicUrl;
 };
 </script>
 
@@ -592,11 +424,19 @@ const uploadProductImage = async (file, productId) => {
             </svg>
             <span>Nuevo</span>
           </button>
-          <button @click="printAllBarcodes" class="btn-secondary">
+          <button @click="printAllBarcodes" class="btn-secondary" title="Imprimir todos los códigos de barras">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="6 9 6 2 18 2 18 9"></polyline>
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
               <rect x="6" y="14" width="12" height="8"></rect>
+            </svg>
+          </button>
+          <button @click="downloadAllBarcodesWord" class="btn-secondary" title="Descargar Word">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
             </svg>
           </button>
         </div>
@@ -690,20 +530,20 @@ const uploadProductImage = async (file, productId) => {
             <svg v-if="p.barcode" :id="`barcode-${p.id}`" class="barcode"></svg>
 
             <div class="product-actions">
-              <button @click="editProduct(p)" class="action-btn edit">
+              <button @click="editProduct(p)" class="action-btn edit" title="Editar">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                 </svg>
               </button>
-              <button v-if="p.barcode" @click="downloadBarcode(p)" class="action-btn download">
+              <button v-if="p.barcode" @click="downloadBarcode(p)" class="action-btn download" title="Descargar código de barras">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                   <polyline points="7 10 12 15 17 10"></polyline>
                   <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
               </button>
-              <button @click="deleteProduct(p)" class="action-btn delete">
+              <button @click="deleteProduct(p)" class="action-btn delete" title="Eliminar">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"></polyline>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -748,10 +588,10 @@ const uploadProductImage = async (file, productId) => {
                 </svg>
               </button>
               <button v-if="p.barcode" @click="downloadBarcode(p)" class="action-btn-small print">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 6 2 18 2 18 9"></polyline>
-                  <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path>
-                  <rect x="6" y="14" width="12" height="8"></rect>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
                 </svg>
               </button>
               <button @click="deleteProduct(p)" class="action-btn-small delete">
@@ -858,7 +698,6 @@ const uploadProductImage = async (file, productId) => {
   margin: 0 auto;
 }
 
-/* Header */
 .page-header {
   display: flex;
   justify-content: space-between;
@@ -924,7 +763,6 @@ const uploadProductImage = async (file, productId) => {
   border-color: #cbd5e1;
 }
 
-/* Toolbar */
 .toolbar {
   display: flex;
   justify-content: space-between;
@@ -990,7 +828,6 @@ const uploadProductImage = async (file, productId) => {
   color: white;
 }
 
-/* Grid View */
 .products-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -1089,27 +926,6 @@ const uploadProductImage = async (file, productId) => {
   color: #0b3c5d;
 }
 
-.profit-badge {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #dcfce7;
-  color: #166534;
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 12px;
-}
-
-.profit-percent {
-  font-size: 12px;
-  background: #16a34a;
-  color: white;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
 .barcode {
   width: 100%;
   height: auto;
@@ -1140,10 +956,6 @@ const uploadProductImage = async (file, productId) => {
   transition: all 0.2s ease;
 }
 
-.action-btn svg {
-  pointer-events: none;
-}
-
 .action-btn.edit {
   background: #dbeafe;
   color: #1e40af;
@@ -1151,17 +963,15 @@ const uploadProductImage = async (file, productId) => {
 
 .action-btn.edit:hover {
   background: #bfdbfe;
-  transform: scale(1.05);
 }
 
-.action-btn.print {
+.action-btn.download {
   background: #e0e7ff;
   color: #4338ca;
 }
 
-.action-btn.print:hover {
+.action-btn.download:hover {
   background: #c7d2fe;
-  transform: scale(1.05);
 }
 
 .action-btn.delete {
@@ -1171,7 +981,6 @@ const uploadProductImage = async (file, productId) => {
 
 .action-btn.delete:hover {
   background: #fecaca;
-  transform: scale(1.05);
 }
 
 /* List View */
@@ -1184,22 +993,17 @@ const uploadProductImage = async (file, productId) => {
 .product-row {
   display: flex;
   align-items: center;
-  gap: 16px;
   background: white;
-  padding: 16px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  transition: all 0.2s ease;
-}
-
-.product-row:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  padding: 14px 20px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+  gap: 20px;
 }
 
 .row-image {
   width: 60px;
   height: 60px;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
   background: #f1f5f9;
   flex-shrink: 0;
@@ -1225,139 +1029,85 @@ const uploadProductImage = async (file, productId) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
-}
-
-.row-main {
-  flex: 1;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .row-main h4 {
   font-size: 16px;
   font-weight: 600;
   color: #0f172a;
-  margin: 0 0 8px 0;
+  margin: 0 0 4px 0;
 }
 
 .row-details {
   display: flex;
-  gap: 12px;
+  gap: 16px;
+  font-size: 14px;
+  color: #64748b;
   flex-wrap: wrap;
 }
 
-.detail-badge, .detail-price, .detail-profit {
-  font-size: 13px;
-  padding: 4px 8px;
-  border-radius: 6px;
-}
-
 .detail-badge {
-  background: #f1f5f9;
-  color: #475569;
+  background: #e2e8f0;
+  padding: 2px 8px;
+  border-radius: 6px;
   font-weight: 600;
+  color: #334155;
 }
 
 .detail-price {
-  background: #dbeafe;
-  color: #1e40af;
+  font-weight: 600;
+  color: #0f172a;
 }
 
 .detail-profit {
-  background: #dcfce7;
-  color: #166534;
+  color: #16a34a;
   font-weight: 600;
 }
 
 .row-actions {
   display: flex;
-  gap: 6px;
-  flex-shrink: 0;
+  gap: 8px;
 }
 
 .action-btn-small {
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
   border: none;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.action-btn-small svg {
-  pointer-events: none;
-}
+.action-btn-small.edit { background: #dbeafe; color: #1e40af; }
+.action-btn-small.print { background: #e0e7ff; color: #4338ca; }
+.action-btn-small.delete { background: #fee2e2; color: #dc2626; }
 
-.action-btn-small.edit {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.action-btn-small.edit:hover {
-  background: #bfdbfe;
-  transform: scale(1.05);
-}
-
-.action-btn-small.print {
-  background: #e0e7ff;
-  color: #4338ca;
-}
-
-.action-btn-small.print:hover {
-  background: #c7d2fe;
-  transform: scale(1.05);
-}
-
-.action-btn-small.delete {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.action-btn-small.delete:hover {
-  background: #fecaca;
-  transform: scale(1.05);
-}
-
-/* Empty State */
-.empty-state {
-  text-align: center;
-  padding: 60px 20px;
-  color: #94a3b8;
-}
-
-.empty-state svg {
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.empty-state p {
-  margin: 0;
-  font-size: 16px;
-}
-
-/* Modal */
+/* Modal Styles */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
-  backdrop-filter: blur(2px);
+  z-index: 1000;
   padding: 20px;
 }
 
 .modal {
   background: white;
   width: 100%;
-  max-width: 560px;
+  max-width: 500px;
   border-radius: 20px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-  max-height: 90vh;
   overflow: hidden;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
 }
@@ -1366,7 +1116,7 @@ const uploadProductImage = async (file, productId) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px 24px 20px;
+  padding: 20px 24px;
   border-bottom: 1px solid #e2e8f0;
 }
 
@@ -1378,14 +1128,14 @@ const uploadProductImage = async (file, productId) => {
 }
 
 .close-btn {
-  width: 50px;
+  background: #f1f5f9;
+  border: none;
+  width: 36px;
   height: 36px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f1f5f9;
-  border: none;
-  border-radius: 8px;
   cursor: pointer;
   color: #64748b;
   transition: all 0.2s ease;
@@ -1399,27 +1149,29 @@ const uploadProductImage = async (file, productId) => {
 .modal-body {
   padding: 24px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .form-group {
-  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .form-group label {
-  display: block;
   font-size: 14px;
   font-weight: 600;
   color: #334155;
-  margin-bottom: 8px;
 }
 
 .form-group input,
 .form-group select {
-  width: 100%;
-  padding: 12px 16px;
-  border: 1px solid #e2e8f0;
+  padding: 12px 14px;
   border-radius: 10px;
-  font-size: 14px;
+  border: 1px solid #cbd5e1;
+  font-size: 15px;
   outline: none;
   transition: all 0.2s ease;
 }
@@ -1427,7 +1179,7 @@ const uploadProductImage = async (file, productId) => {
 .form-group input:focus,
 .form-group select:focus {
   border-color: #0b3c5d;
-  box-shadow: 0 0 0 2px rgba(11, 60, 93, 0.15);
+  box-shadow: 0 0 0 3px rgba(11, 60, 93, 0.1);
 }
 
 .form-row {
@@ -1438,25 +1190,24 @@ const uploadProductImage = async (file, productId) => {
 
 .file-upload {
   position: relative;
+  overflow: hidden;
 }
 
 .file-upload input[type="file"] {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
+  display: none;
 }
 
 .file-label {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   padding: 12px;
   background: #f8fafc;
   border: 2px dashed #cbd5e1;
   border-radius: 10px;
   cursor: pointer;
-  color: #64748b;
+  color: #475569;
   font-weight: 600;
   transition: all 0.2s ease;
 }
@@ -1469,21 +1220,21 @@ const uploadProductImage = async (file, productId) => {
 
 .image-preview {
   width: 100%;
-  height: 200px;
+  height: 140px;
   object-fit: cover;
   border-radius: 10px;
-  margin-top: 12px;
+  margin-top: 8px;
   border: 1px solid #e2e8f0;
 }
 
 .modal-actions {
   display: flex;
-  gap: 12px;
-  margin-top: 24px;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .btn-confirm {
-  flex: 1;
   background: #0b3c5d;
   color: white;
   border: none;
@@ -1500,7 +1251,6 @@ const uploadProductImage = async (file, productId) => {
 }
 
 .btn-cancel-modal {
-  flex: 1;
   background: #f1f5f9;
   color: #475569;
   border: none;
@@ -1516,66 +1266,19 @@ const uploadProductImage = async (file, productId) => {
   background: #e2e8f0;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .page {
-    padding: 16px;
-  }
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #94a3b8;
+  gap: 16px;
+}
 
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .header-actions {
-    width: 100%;
-  }
-
-  .btn-add {
-    flex: 1;
-    justify-content: center;
-  }
-
-  .toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .search-box {
-    max-width: none;
-  }
-
-  .view-toggles {
-    align-self: flex-end;
-  }
-
-  .products-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .form-row {
-    grid-template-columns: 1fr;
-  }
-
-  .product-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .row-content {
-    width: 100%;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .row-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-
-  .action-btn-small {
-    width: 60px;
-    height: 44px;
-  }
+.empty-state p {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
 }
 </style>

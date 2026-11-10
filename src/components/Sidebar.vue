@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
-import { supabase } from '../lib/supabase';
+import api from '../lib/axios';
 
 const router = useRouter();
 const route = useRoute();
@@ -10,23 +10,19 @@ const role = ref('');
 const plan = ref('');
 const userId = ref(null);
 
-const getUserRole = async () => {
+const getUserData = () => {
+  
   try {
-    const { data: session } = await supabase.auth.getSession();
-    if (!session?.session?.user) return;
-
-    userId.value = session.session.user.id;
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role, plan')
-      .eq('id', session.session.user.id)
-      .maybeSingle();
-
-    role.value = profile?.role || 'admin';
-    plan.value = profile?.plan || 'basico';
+    const userStr = localStorage.getItem('kiopos_user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      console.log(user.role)
+      userId.value = user.id;
+      role.value = user.role || 'kiosk';
+      plan.value = user.plan || 'basico';
+    }
   } catch (err) {
-    console.error(err);
+    console.error('Error al obtener datos del usuario:', err);
   }
 };
 
@@ -37,8 +33,14 @@ const go = (path) => {
 
 const logout = async () => {
   try {
-    await supabase.auth.signOut({ scope: 'local' });
+    // Llamar a la API para revocar el token en Laravel (opcional pero recomendado)
+    await api.post('/logout');
+  } catch (err) {
+    console.error('Error al cerrar sesión en la API:', err);
   } finally {
+    // Limpiar localStorage y redirigir al login
+    localStorage.removeItem('kiopos_token');
+    localStorage.removeItem('kiopos_user');
     router.push('/login');
     open.value = false;
   }
@@ -61,7 +63,7 @@ watch(route, () => {
 });
 
 onMounted(() => {
-  getUserRole();
+  getUserData();
   document.addEventListener('click', handleClickOutside);
 });
 </script>
@@ -78,10 +80,21 @@ onMounted(() => {
 
     <nav class="nav-items">
 
+      <!-- =========================
+            DASHBOARD
+        ========================= -->
+        <div v-if="role == 'kiosk'" class="nav-section">
+          <span class="section-title">VENTAS</span>
+
+          <button @click="go('/')" class="btn">
+            Inicio
+          </button>
+        </div>
+
         <!-- =========================
             VENTAS
         ========================= -->
-        <div v-if="role !== 'admin'" class="nav-section">
+        <div v-if="role == 'kiosk'" class="nav-section">
           <span class="section-title">VENTAS</span>
 
           <button @click="go('/pos')" class="btn">
@@ -101,7 +114,7 @@ onMounted(() => {
         <!-- =========================
             INVENTARIO
         ========================= -->
-        <div v-if="role !== 'admin'" class="nav-section">
+        <div v-if="role == 'kiosk'" class="nav-section">
           <span class="section-title">INVENTARIO</span>
 
           <button @click="go('/products')" class="btn">
@@ -113,7 +126,7 @@ onMounted(() => {
         <!-- =========================
             FINANZAS
         ========================= -->
-        <div v-if="role !== 'admin'" class="nav-section">
+        <div v-if="role == 'kiosk'" class="nav-section">
           <span class="section-title">FINANZAS</span>
 
           <button @click="go('/capital')" class="btn">
@@ -129,7 +142,7 @@ onMounted(() => {
         <!-- =========================
             CONFIGURACIÓN
         ========================= -->
-        <div v-if="role !== 'admin'" class="nav-section">
+        <div v-if="role == 'kiosk'" class="nav-section">
           <span class="section-title">SISTEMA</span>
 
           <button @click="go('/settings')" class="btn">
@@ -141,7 +154,7 @@ onMounted(() => {
         <!-- =========================
             CATALOGO
         ========================= -->
-        <div v-if="role !== 'admin' && plan === 'pro'" class="nav-section">
+        <div v-if="role == 'kiosk' && plan === 'pro'" class="nav-section">
           <span class="section-title">CATÁLOGO</span>
 
           <button
@@ -197,7 +210,6 @@ onMounted(() => {
   padding: 20px;
   box-shadow: 2px 0 12px rgba(0, 0, 0, 0.25);
 
-  /* 👇 AGREGA ESTO */
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -209,7 +221,7 @@ onMounted(() => {
 
 /* HEADER */
 .sidebar-header {
-  height: 56px; /* misma altura visual que el toggle */
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -1,10 +1,10 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { supabase } from '../lib/supabase';
+import api from '../lib/axios';
 import Swal from 'sweetalert2';
 
 // ── Crear usuario ──
-const email    = ref('');
+const email     = ref('');
 const password = ref('');
 const name     = ref('');
 const plan     = ref('basico');
@@ -27,8 +27,8 @@ const newPassword       = ref('');
 
 // ─────────────────────────────────────────
 const PLANS = [
-  { id: 'basico',     label: 'Básico',     color: '#64748b', bg: '#f1f5f9', icon: '◈' },
-  { id: 'pro',        label: 'Pro',        color: '#4f46e5', bg: '#eef2ff', icon: '⬡' },
+  { id: 'basico',    label: 'Básico',    color: '#64748b', bg: '#f1f5f9', icon: '◈' },
+  { id: 'pro',       label: 'Pro',       color: '#4f46e5', bg: '#eef2ff', icon: '⬡' },
   { id: 'comercial', label: 'Comercial', color: '#0369a1', bg: '#e0f2fe', icon: '✦' },
 ];
 
@@ -37,13 +37,14 @@ const getPlan = (id) => PLANS.find((p) => p.id === id) || PLANS[0];
 // ─────────────────────────────────────────
 const loadUsers = async () => {
   loading.value = true;
-  const { data } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('role', 'kiosk')
-    .order('created_at', { ascending: false });
-  users.value = data || [];
-  loading.value = false;
+  try {
+    const response = await api.get('/users');
+    users.value = response.data.users || [];
+  } catch (error) {
+    console.error('Error cargando usuarios:', error);
+  } finally {
+    loading.value = false;
+  }
 };
 
 const createUser = async () => {
@@ -53,42 +54,40 @@ const createUser = async () => {
   }
   loadingCreate.value = true;
 
-  const { data: authData, error } = await supabase.auth.signUp({
-    email: email.value,
-    password: password.value,
-  });
+  try {
+    await api.post('/users', {
+      email: email.value,
+      password: password.value,
+      name: name.value,
+      plan: plan.value,
+    });
 
-  if (error) {
-    Swal.fire('Error', error.message, 'error');
+    email.value = '';
+    password.value = '';
+    name.value = '';
+    plan.value = 'basico';
+    showCreateForm.value = false;
+
+    Swal.fire({ icon: 'success', title: 'Usuario creado', toast: true,
+      position: 'top-end', showConfirmButton: false, timer: 2500 });
+    loadUsers();
+  } catch (error) {
+    console.error('Error creando usuario:', error);
+    Swal.fire('Error', error.response?.data?.message || 'No se pudo crear el usuario', 'error');
+  } finally {
     loadingCreate.value = false;
-    return;
   }
-
-  await supabase.from('profiles').insert({
-    id:     authData.user.id,
-    email:  email.value,
-    name:   name.value,
-    role:   'kiosk',
-    plan:   plan.value,
-    active: true,
-  });
-
-  loadingCreate.value = false;
-  email.value = '';
-  password.value = '';
-  name.value = '';
-  plan.value = 'basico';
-  showCreateForm.value = false;
-
-  Swal.fire({ icon: 'success', title: 'Usuario creado', toast: true,
-    position: 'top-end', showConfirmButton: false, timer: 2500 });
-  loadUsers();
 };
 
 // ── Activar / Desactivar ──
 const toggleActive = async (id, value) => {
-  await supabase.from('profiles').update({ active: value }).eq('id', id);
-  loadUsers();
+  try {
+    await api.patch(`/users/${id}/status`, { active: value });
+    loadUsers();
+  } catch (error) {
+    console.error('Error cambiando estado:', error);
+    Swal.fire('Error', 'No se pudo actualizar el estado', 'error');
+  }
 };
 
 // ── Editar ──
@@ -98,21 +97,21 @@ const openEditModal = (u) => {
 };
 
 const saveEditUser = async () => {
-  const { error } = await supabase
-    .from('profiles')
-    .update({
+  try {
+    await api.put(`/users/${editUserData.value.id}`, {
       email: editUserData.value.email,
       name:  editUserData.value.name,
       plan:  editUserData.value.plan,
-    })
-    .eq('id', editUserData.value.id);
+    });
 
-  if (error) { Swal.fire('Error', error.message, 'error'); return; }
-
-  showEditModal.value = false;
-  Swal.fire({ icon: 'success', title: 'Guardado', toast: true,
-    position: 'top-end', showConfirmButton: false, timer: 2000 });
-  loadUsers();
+    showEditModal.value = false;
+    Swal.fire({ icon: 'success', title: 'Guardado', toast: true,
+      position: 'top-end', showConfirmButton: false, timer: 2000 });
+    loadUsers();
+  } catch (error) {
+    console.error('Error actualizando usuario:', error);
+    Swal.fire('Error', error.response?.data?.message || 'No se pudo actualizar', 'error');
+  }
 };
 
 // ── Contraseña ──
@@ -120,26 +119,6 @@ const openPasswordModal = (user) => {
   passwordUserId.value = user.id;
   newPassword.value = '';
   showPasswordModal.value = true;
-};
-
-const resetPasswordByEmail = async (user) => {
-  const res = await Swal.fire({
-    title: 'Restablecer contraseña',
-    text: `Se enviará un correo a ${user.email}`,
-    icon: 'info',
-    showCancelButton: true,
-    confirmButtonText: 'Enviar correo',
-    cancelButtonText: 'Cancelar',
-  });
-  if (!res.isConfirmed) return;
-
-  const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-    redirectTo: window.location.origin + '/reset-password',
-  });
-
-  error
-    ? Swal.fire('Error', error.message, 'error')
-    : Swal.fire('Correo enviado', 'El usuario recibirá instrucciones.', 'success');
 };
 
 // ── Eliminar ──
@@ -155,10 +134,15 @@ const deleteUser = async (id) => {
   });
   if (!res.isConfirmed) return;
 
-  await supabase.from('profiles').delete().eq('id', id);
-  Swal.fire({ icon: 'success', title: 'Eliminado', toast: true,
-    position: 'top-end', showConfirmButton: false, timer: 2000 });
-  loadUsers();
+  try {
+    await api.delete(`/users/${id}`);
+    Swal.fire({ icon: 'success', title: 'Eliminado', toast: true,
+      position: 'top-end', showConfirmButton: false, timer: 2000 });
+    loadUsers();
+  } catch (error) {
+    console.error('Error eliminando usuario:', error);
+    Swal.fire('Error', 'No se pudo eliminar el usuario', 'error');
+  }
 };
 
 // ── Filtro ──
@@ -292,6 +276,7 @@ onMounted(loadUsers);
             <td>
               <div class="actions">
                 <button class="btn-action btn-default" @click="openEditModal(u)">✎ Editar</button>
+                <button class="btn-action btn-danger" @click="deleteUser(u.id)">🗑 Eliminar</button>
               </div>
             </td>
           </tr>
@@ -329,6 +314,7 @@ onMounted(loadUsers);
             </button>
             <div class="uc-actions">
               <button class="btn-action btn-default" @click="openEditModal(u)">✎ Editar</button>
+              <button class="btn-action btn-danger" @click="deleteUser(u.id)">🗑 Eliminar</button>
             </div>
           </div>
 
@@ -370,28 +356,6 @@ onMounted(loadUsers);
           <div class="modal-footer">
             <button class="btn-primary full" @click="saveEditUser">Guardar cambios</button>
             <button class="btn-ghost full" @click="showEditModal = false">Cancelar</button>
-          </div>
-        </div>
-      </div>
-    </Transition>
-
-    <!-- ── MODAL CONTRASEÑA ── -->
-    <Transition name="fade">
-      <div v-if="showPasswordModal" class="modal-backdrop" @click.self="showPasswordModal = false">
-        <div class="modal">
-          <div class="modal-header">
-            <h3>Cambiar contraseña</h3>
-            <button class="modal-close" @click="showPasswordModal = false">✕</button>
-          </div>
-
-          <div class="field">
-            <label>Nueva contraseña</label>
-            <input v-model="newPassword" type="password" placeholder="••••••••" />
-          </div>
-
-          <div class="modal-footer">
-            <button class="btn-primary full" @click="showPasswordModal = false">Actualizar</button>
-            <button class="btn-ghost full" @click="showPasswordModal = false">Cancelar</button>
           </div>
         </div>
       </div>
@@ -594,7 +558,7 @@ td { padding: 12px 14px; vertical-align: middle; }
   .mobile-cards  { display: block; }
 
   .stats-row { grid-template-columns: repeat(3,1fr); gap: 8px; }
-  .stat-num  { font-size: 20px; }
+  .stat-num   { font-size: 20px; }
 
   .cards-list { display: flex; flex-direction: column; gap: 10px; }
 

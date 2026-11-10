@@ -39,7 +39,7 @@
 
 <script setup>
 import { ref } from 'vue';
-import { supabase } from '../lib/supabase';
+import api from '../lib/axios';
 import { useRouter } from 'vue-router';
 
 const email = ref('');
@@ -54,45 +54,31 @@ const login = async () => {
   error.value = null;
 
   try {
-    const { data: authData, error: loginError } =
-      await supabase.auth.signInWithPassword({
-        email: email.value,
-        password: password.value,
-      });
+    // Petición a tu API Laravel con Passport
+    const response = await api.post('/login', {
+      email: email.value,
+      password: password.value,
+    });
 
-    if (loginError) {
-      error.value = loginError.message;
-      return;
-    }
+    // Dentro de tu función login en Login.vue:
+    const { token, user } = response.data;
 
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('active, role')
-      .eq('id', authData.user.id)
-      .maybeSingle();
+    // Guardar token y usuario en localStorage
+    localStorage.setItem('kiopos_token', token);
+    localStorage.setItem('kiopos_user', JSON.stringify(user));
 
-    if (profileError) {
-      console.error(profileError);
-      error.value = 'Error al verificar el perfil';
-      return;
-    }
-
-    if (profile?.role === 'kiosk') {
-      if (!profile) {
-        await supabase.auth.signOut();
-        error.value =
-          'Usuario kiosko no registrado correctamente. Contacta al administrador.';
-        return;
-      }
-      if (!profile.active) {
-        await supabase.auth.signOut();
+    // Validación de usuario activo y reglas de Kiosko
+    if (user.role === 'kiosk') {
+      if (!user.active) {
+        localStorage.removeItem('kiopos_token');
         error.value =
           'Tu usuario kiosko está inactivo. Contacta al administrador por pagos pendientes.';
         return;
       }
     }
 
-    if (profile.role === 'admin') {
+    // Redirección según rol (idéntico al flujo anterior)
+    if (user.role === 'admin') {
       router.push('/users');
     } else {
       router.push('/');
@@ -100,7 +86,11 @@ const login = async () => {
 
   } catch (err) {
     console.error(err);
-    error.value = 'Error inesperado, revisa la consola';
+    if (err.response && err.response.data && err.response.data.message) {
+      error.value = err.response.data.message;
+    } else {
+      error.value = 'Credenciales incorrectas o error de conexión';
+    }
   } finally {
     loading.value = false;
   }

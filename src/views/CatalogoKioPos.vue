@@ -118,7 +118,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { supabase } from '../lib/supabase';
+import api from '../lib/axios';
 
 const route = useRoute();
 const products = ref([]);
@@ -147,35 +147,28 @@ const badgeLabel = (b) => {
 // moneda
 const fmt = (num) => new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' }).format(num);
 
-// cargar productos
+// cargar productos usando Axios
 const loadCatalogProducts = async (storeId) => {
   if (!storeId) return;
-  const { data, error } = await supabase
-    .from('products')
-    .select('*')
-    .eq('user_id', storeId)
-    .order('created_at', { ascending: false });
-  if (error) console.error('Error cargando productos:', error);
-  products.value = data ?? [];
-  console.log('Productos cargados:', data);
+  try {
+    const response = await api.get(`/catalog/${storeId}/products`);
+    products.value = response.data.products ?? [];
+    console.log('Productos cargados:', products.value);
+  } catch (error) {
+    console.error('Error cargando productos:', error);
+  }
 };
 
 const loadStoreProfile = async (storeId) => {
   if (!storeId) return;
 
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('name')
-    .eq('id', storeId)
-    .single();
-
-  if (error) {
+  try {
+    const response = await api.get(`/catalog/${storeId}/profile`);
+    if (response.data && response.data.name) {
+      storeName.value = response.data.name;
+    }
+  } catch (error) {
     console.error('Error cargando perfil:', error);
-    return;
-  }
-
-  if (data) {
-    storeName.value = data.name;
   }
 };
 

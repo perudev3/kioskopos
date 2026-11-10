@@ -19,7 +19,7 @@
         <div class="stat-icon">📉</div>
         <div class="stat-content">
           <div class="stat-label">Total Egresos</div>
-          <div class="stat-value negative">- S/ {{ formatMoney(totalEgresos) }}</div>
+          <div class="stat-value negative">S/ {{ formatMoney(totalEgresos) }}</div>
           <div class="stat-detail">{{ porcentajeGastado }}% del capital</div>
         </div>
       </div>
@@ -179,13 +179,13 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
 import StatCard from '../components/StatCard.vue';
-import { supabase } from '../lib/supabase';
+import api from '../lib/axios';
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
 
 const isLoading = ref(true);
-const profile = ref(null);
+const profile = ref({ name: '' });
 const user = ref(null);
 
 // Filtros de fecha
@@ -208,18 +208,6 @@ const profitLast7Days = ref([]);
 
 let salesChart = null;
 let profitChart = null;
-
-/* =========================
-   CONVERSIÓN DE RANGO A UTC
-========================= */
-const getLocalDateRangeUTC = (date) => {
-  const start = new Date(date + 'T00:00:00');
-  const end = new Date(date + 'T23:59:59');
-  return {
-    from: start.toISOString(),
-    to: end.toISOString()
-  };
-};
 
 /* =========================
    COMPUTED
@@ -269,212 +257,45 @@ watch(recentSales, () => {
 });
 
 /* =========================
-   CARGAR DASHBOARD
+   CARGAR DASHBOARD DESDE LA API
 ========================= */
 const loadDashboard = async () => {
   try {
     isLoading.value = true;
 
-    const { data: { user: authUser } } = await supabase.auth.getUser();
-    if (!authUser) return;
-
-    user.value = authUser;
-
-    // Cargar perfil
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('name')
-      .eq('id', authUser.id)
-      .single();
-    
-    if (profileData) profile.value = profileData;
-
-    // Query de ventas
-    let salesQuery = supabase
-      .from('sales')
-      .select('*, sale_items(*, product:product_id(price))')
-      .eq('user_id', authUser.id)
-      .neq('payment_method', 'por_cobrar')
-      .neq('status', 'cancelled')
-      .order('created_at', { ascending: false });
-
-    if (fromDate.value && toDate.value) {
-      const fromRange = getLocalDateRangeUTC(fromDate.value);
-      const toRange = getLocalDateRangeUTC(toDate.value);
-      salesQuery = salesQuery
-        .gte('created_at', fromRange.from)
-        .lte('created_at', toRange.to);
-    }
-
-    const { data: sales = [] } = await salesQuery;
-
-    // Query de capital
-    let capitalQuery = supabase
-      .from('capital')
-      .select('monto')
-      .eq('user_id', authUser.id)
-      .eq('tipo_movimiento', 'ingreso');
-
-    if (fromDate.value && toDate.value) {
-      const fromRange = getLocalDateRangeUTC(fromDate.value);
-      const toRange = getLocalDateRangeUTC(toDate.value);
-      capitalQuery = capitalQuery
-        .gte('fecha_registro', fromRange.from)
-        .lte('fecha_registro', toRange.to);
-    }
-
-    const { data: capital = [] } = await capitalQuery;
-
-    // Query de egresos
-    let egresosQuery = supabase
-      .from('egresos')
-      .select('monto, created_at')
-      .eq('user_id', authUser.id)
-      .neq('categoria', 'Capital')
-      .neq('tipo', 'capital');
-
-    if (fromDate.value && toDate.value) {
-      const fromRange = getLocalDateRangeUTC(fromDate.value);
-      const toRange = getLocalDateRangeUTC(toDate.value);
-      egresosQuery = egresosQuery
-        .gte('created_at', fromRange.from)
-        .lte('created_at', toRange.to);
-    }
-
-    const { data: egresos = [] } = await egresosQuery;
-
-    /* =========================
-       CALCULAR TOTALES
-    ========================= */
-    // Total de ventas y ganancia neta
-    let totalVentasSum = 0;
-    let gananciaNetaSum = 0;
-
-    sales.forEach(sale => {
-      sale.sale_items?.forEach(item => {
-        const qty = Number(item.quantity || 0);
-        const salePrice = Number(item.price || 0);
-        const basePrice = Number(item.product?.price || 0);
-        
-        totalVentasSum += salePrice * qty;
-        gananciaNetaSum += (salePrice - basePrice) * qty;
-      });
+    const response = await api.get('/dashboard', {
+      params: {
+        from: fromDate.value,
+        to: toDate.value
+      }
     });
 
-    totalVentas.value = totalVentasSum;
-    gananciaNeta.value = gananciaNetaSum;
+    const data = response.data;
 
-    // Capital registrado
-    capitalRegistrado.value = capital.reduce((sum, c) => sum + Number(c.monto || 0), 0);
-
-    // Total egresos
-    totalEgresos.value = egresos.reduce((sum, e) => sum + Number(e.monto || 0), 0);
-
-    /* =========================
-       HOY
-    ========================= */
-    const today = new Date().toISOString().split('T')[0];
-    const todaySales = sales.filter(s => s.created_at.startsWith(today));
-
-    let ventasHoySum = 0;
-    let gananciaHoySum = 0;
-
-    todaySales.forEach(sale => {
-      sale.sale_items?.forEach(item => {
-        const qty = Number(item.quantity || 0);
-        const salePrice = Number(item.price || 0);
-        const basePrice = Number(item.product?.price || 0);
-        
-        ventasHoySum += salePrice * qty;
-        gananciaHoySum += (salePrice - basePrice) * qty;
-      });
-    });
-
-    ventasHoy.value = todaySales.length;
-    gananciaHoy.value = gananciaHoySum;
-
-    /* =========================
-       ÚLTIMAS VENTAS
-    ========================= */
-    recentSales.value = sales.slice(0, 50).map(s => {
-      let saleProfit = 0;
-      s.sale_items?.forEach(item => {
-        const qty = Number(item.quantity || 0);
-        const salePrice = Number(item.price || 0);
-        const basePrice = Number(item.product?.price || 0);
-        saleProfit += (salePrice - basePrice) * qty;
-      });
-
-      return {
-        id: s.id,
-        customer: s.customer_name || 'Cliente',
-        total: Number(s.total).toFixed(2),
-        profit: saleProfit.toFixed(2),
-        date: new Date(s.created_at).toLocaleDateString('es-ES')
-      };
-    });
-
-    /* =========================
-       PRODUCTOS BAJO STOCK
-    ========================= */
-    const { data: products = [] } = await supabase
-      .from('products')
-      .select('*')
-      .eq('user_id', authUser.id);
-    
-    lowStockProducts.value = products.filter(p => p.stock <= 5);
-
-    /* =========================
-       GRÁFICOS ÚLTIMOS 7 DÍAS
-    ========================= */
-    salesLast7Days.value = [];
-    profitLast7Days.value = [];
-
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const day = d.toISOString().split('T')[0];
-
-      const daySales = sales.filter(s => s.created_at.startsWith(day));
-
-      let dayVentasSum = 0;
-      let dayGananciaSum = 0;
-
-      daySales.forEach(sale => {
-        sale.sale_items?.forEach(item => {
-          const qty = Number(item.quantity || 0);
-          const salePrice = Number(item.price || 0);
-          const basePrice = Number(item.product?.price || 0);
-          
-          dayVentasSum += salePrice * qty;
-          dayGananciaSum += (salePrice - basePrice) * qty;
-        });
-      });
-
-      salesLast7Days.value.push(dayVentasSum);
-      profitLast7Days.value.push(dayGananciaSum);
-    }
+    user.value = data.user;
+    profile.value = data.profile;
+    totalVentas.value = data.totalVentas;
+    gananciaNeta.value = data.gananciaNeta;
+    capitalRegistrado.value = data.capitalRegistrado;
+    totalEgresos.value = data.totalEgresos;
+    ventasHoy.value = data.ventasHoy;
+    gananciaHoy.value = data.gananciaHoy;
+    recentSales.value = data.recentSales;
+    lowStockProducts.value = data.lowStockProducts;
+    salesLast7Days.value = data.salesLast7Days;
+    profitLast7Days.value = data.profitLast7Days;
 
     initCharts();
 
   } catch (error) {
-    console.error('Error cargando dashboard:', error);
+    console.error('Error cargando dashboard desde la API:', error);
   } finally {
     isLoading.value = false;
   }
 };
 
-  const goToProducts = () => {
-    window.location.href = '/products'; // O usa router.push('/products') si usas Vue Router
-  };
-
-/* =========================
-   RESETEAR FILTROS
-========================= */
-const resetFilters = () => {
-  fromDate.value = '';
-  toDate.value = '';
-  loadDashboard();
+const goToProducts = () => {
+  window.location.href = '/products';
 };
 
 /* =========================
@@ -487,11 +308,9 @@ const initCharts = () => {
     return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short' });
   });
 
-  // Destruir gráficos anteriores
   if (salesChart) salesChart.destroy();
   if (profitChart) profitChart.destroy();
 
-  // Gráfico de ventas
   salesChart = new Chart(document.getElementById('salesChart'), {
     type: 'line',
     data: {
@@ -515,7 +334,6 @@ const initCharts = () => {
     }
   });
 
-  // Gráfico de ganancias
   profitChart = new Chart(document.getElementById('profitChart'), {
     type: 'bar',
     data: {
@@ -605,66 +423,6 @@ onMounted(loadDashboard);
   color: #0b3c5d;
   line-height: 1.2;
   margin: 0;
-}
-
-/* =========================
-   FILTROS
-========================= */
-.filters-card {
-  background: white;
-  padding: 16px 20px;
-  border-radius: 16px;
-  margin-bottom: 24px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-}
-
-.filters-content {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.date-input {
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 1px solid #cbd5e1;
-  font-size: 14px;
-  outline: none;
-  transition: all 0.2s ease;
-}
-
-.date-input:focus {
-  border-color: #0b3c5d;
-  box-shadow: 0 0 0 2px rgba(11,60,93,0.1);
-}
-
-.filter-btn,
-.clear-btn {
-  padding: 10px 18px;
-  border-radius: 10px;
-  border: none;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.filter-btn {
-  background: #0b3c5d;
-  color: white;
-}
-
-.filter-btn:hover {
-  background: #1fa2c1;
-}
-
-.clear-btn {
-  background: #f1f5f9;
-  color: #475569;
-}
-
-.clear-btn:hover {
-  background: #e2e8f0;
 }
 
 /* =========================
@@ -835,10 +593,6 @@ onMounted(loadDashboard);
   margin-bottom: 24px;
 }
 
-.table-card.alert-card {
-  border: 2px solid #f59e0b;
-}
-
 .table-card h2 {
   font-size: 18px;
   font-weight: 700;
@@ -871,15 +625,6 @@ onMounted(loadDashboard);
 
 .responsive-table tbody tr:hover {
   background: #f8fafc;
-}
-
-.badge {
-  background: #e0f2fe;
-  color: #0c4a6e;
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-weight: 600;
-  font-size: 13px;
 }
 
 .amount-cell {
@@ -1029,20 +774,9 @@ onMounted(loadDashboard);
     grid-template-columns: 1fr;
   }
 
-  /* 👇 AQUÍ EL CAMBIO */
   .dashboard-grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 12px;
-  }
-
-  .filters-content {
-    flex-direction: column;
-  }
-
-  .date-input,
-  .filter-btn,
-  .clear-btn {
-    width: 100%;
   }
 
   .stat-value {
@@ -1053,7 +787,6 @@ onMounted(loadDashboard);
     height: 220px !important;
   }
 }
-
 
 /* =========================
    ALERTA CRÍTICA DE STOCK
@@ -1148,7 +881,6 @@ onMounted(loadDashboard);
   font-size: 16px;
 }
 
-/* Responsive para móviles */
 @media (max-width: 768px) {
   .alert-header {
     flex-direction: column;

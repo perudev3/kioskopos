@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { supabase } from '../lib/supabase'
+import api from '../lib/axios'
 import html2canvas from 'html2canvas'
 
 const props = defineProps({ sale: Object })
@@ -10,20 +10,15 @@ const items = ref([])
 const receiptRef = ref(null)
 
 /* =========================
-   CARGAR ITEMS
+   CARGAR ITEMS DESDE LA API
 ========================= */
 onMounted(async () => {
-  const { data } = await supabase
-    .from('sale_items')
-    .select(`
-      quantity,
-      price,
-      subtotal,
-      products ( name )
-    `)
-    .eq('sale_id', props.sale.id)
-
-  items.value = data || []
+  try {
+    const response = await api.get(`/sales/${props.sale.id}/items`)
+    items.value = response.data.items || []
+  } catch (error) {
+    console.error('Error cargando ítems de la venta:', error)
+  }
 })
 
 /* =========================
@@ -45,9 +40,8 @@ const exportPNG = async () => {
 </script>
 
 <template>
-  <div class="backdrop">
+  <div class="backdrop" @click.self="emit('close')">
     <div class="modal">
-    <div class="receipt" ref="receiptRef">
       <!-- BOLETA -->
       <div class="receipt" ref="receiptRef">
         <h2>KioPOS</h2>
@@ -60,7 +54,7 @@ const exportPNG = async () => {
 
         <div class="row">
           <span>Método</span>
-          <span>{{ sale.payment_method === 'cash' ? 'Efectivo' : sale.payment_method }}</span>
+          <span>{{ sale.payment_method === 'cash' || sale.payment_method === 'efectivo' ? 'Efectivo' : sale.payment_method }}</span>
         </div>
 
         <hr />
@@ -70,10 +64,10 @@ const exportPNG = async () => {
           :key="idx"
           class="item"
         >
-          <div class="name">{{ i.products.name }}</div>
+          <div class="name">{{ i.product?.name || 'Producto' }}</div>
           <div class="line">
-            {{ i.quantity }} x S/ {{ i.price }}
-            <strong>S/ {{ i.subtotal }}</strong>
+            {{ i.quantity }} x S/ {{ Number(i.price).toFixed(2) }}
+            <strong>S/ {{ Number(i.subtotal).toFixed(2) }}</strong>
           </div>
         </div>
 
@@ -81,13 +75,13 @@ const exportPNG = async () => {
 
         <div class="total">
           TOTAL
-          <span>S/ {{ sale.total }}</span>
+          <span>S/ {{ Number(sale.total).toFixed(2) }}</span>
         </div>
 
         <p class="thanks">¡Gracias por su compra!</p>
-      </div>      
-    </div>
-    <!-- BOTONES -->
+      </div>
+
+      <!-- BOTONES -->
       <button class="btn primary" @click="exportPNG">
         🧾 Descargar boleta
       </button>
@@ -124,28 +118,16 @@ const exportPNG = async () => {
   max-width: 360px;
   border-radius: 18px;
   box-shadow: 0 25px 50px rgba(0,0,0,.35);
-}
-
-
-/* =========================
-   SCROLL PARA BOLETA LARGA
-========================= */
-.modal {
   max-height: 90vh;
   overflow-y: auto;
 }
-
-.receipt {
-  max-height: none;
-  overflow: visible;
-}
-
 
 /* =========================
    BOLETA
 ========================= */
 .receipt {
-  background: white;
+  background: #ffffff !important;
+  color: #000000 !important;
   padding: 16px;
   border-radius: 12px;
   font-family: 'Courier New', monospace;
@@ -230,21 +212,11 @@ hr {
 /* =========================
    BOLETA (EXPORTABLE)
 ========================= */
-.receipt {
-  background: #ffffff !important;
-  color: #000000 !important;
-  padding: 16px;
-  border-radius: 12px;
-  font-family: 'Courier New', monospace;
-}
-
-/* Fuerza texto negro */
 .receipt * {
   color: #000000 !important;
   background: transparent !important;
 }
 
-/* Tabla */
 .receipt table {
   width: 100%;
   border-collapse: collapse;
@@ -257,20 +229,16 @@ hr {
   padding: 6px 4px;
 }
 
-/* Total */
 .receipt .total {
   font-size: 16px;
   font-weight: bold;
   margin-top: 10px;
-  text-align: right;
 }
 
-/* Quitar sombras / efectos */
 .receipt,
 .receipt * {
   box-shadow: none !important;
   text-shadow: none !important;
   filter: none !important;
 }
-
 </style>
