@@ -88,7 +88,7 @@ onBeforeUnmount(() => {
 
       <!-- DASHBOARD -->
       <div v-if="role == 'kiosk'" class="nav-section">
-        <span class="section-title">VENTAS</span>
+        <span class="section-title">DASHBOARD</span>
 
         <button @click="go('/')" class="btn">
           Inicio
@@ -325,12 +325,6 @@ onBeforeUnmount(() => {
 
   padding-top: 12px;
   margin-top: auto;
-
-  background: linear-gradient(
-    180deg,
-    rgba(11, 60, 93, 0),
-    rgba(11, 60, 93, 0.95) 20%
-  );
 }
 
 /* LOGOUT */
