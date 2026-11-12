@@ -108,7 +108,7 @@ onMounted(loadPendingSales)
           <div class="info">
             <div class="total">S/ {{ Number(sale.total).toFixed(2) }}</div>
             <div class="customer">
-              Cliente: {{ sale.cliente_por_cobrar?.customer_name }}
+              Cliente: {{ sale.customer_name }}
             </div>
             <div class="date">
               {{ new Date(sale.created_at).toLocaleString() }}
