@@ -1,6 +1,6 @@
 <script setup>
 import html2canvas from 'html2canvas'
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
 import api from '../lib/axios'
 import Swal from 'sweetalert2'
 import Quagga from 'quagga'
@@ -76,15 +76,25 @@ const calculatedPrice = computed(() => {
   return calculated.toFixed(2)
 })
 
+// 1. Mantienes tu declaración de variables
 const paymentQRs = ref([])
+const paymentMethod = ref('cash') // o el valor por defecto que tengas
 
-watch(paymentMethod, (method) => {
-  if (method === 'yape' || method === 'plin') {
-    selectedQR.value =
-      paymentQRs.value.find(qr => qr.method === method) || null
-  } else {
-    selectedQR.value = null
+// 2. BORRAS el watch completo y lo cambias por esto:
+const selectedQR = computed(() => {
+  if (paymentMethod.value !== 'yape' && paymentMethod.value !== 'plin') {
+    return null
   }
+  
+  if (!paymentQRs.value || paymentQRs.value.length === 0) {
+    return null
+  }
+
+  // Busca el QR correspondiente sin importar mayúsculas/minúsculas
+  return paymentQRs.value.find(qr => 
+    qr.method.toLowerCase() === paymentMethod.value.toLowerCase() && 
+    (qr.active == 1 || qr.active === true)
+  ) || null
 })
 
 const updateQuantity = (id, newQty) => {
