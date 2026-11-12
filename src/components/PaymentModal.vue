@@ -6,8 +6,11 @@ const props = defineProps({
   loading: Boolean,
   method: String,
 
-  /* ====== AGREGADO ====== */
-  paymentQR: Object
+  /* ====== CAMBIO: Ahora recibe el array completo de la API ====== */
+  paymentQrs: {
+    type: Array,
+    default: () => []
+  }
 });
 const emit = defineEmits(['update:method', 'confirm', 'close']);
 
@@ -18,6 +21,12 @@ const localMethod = ref(props.method);
 const customerName = ref('');
 const customerPhone = ref('');
 const customerComment = ref('');
+
+// 🔹 Buscar dinámicamente el QR correspondiente al método seleccionado (yape o plin)
+const currentQR = computed(() => {
+  if (!props.paymentQrs || props.paymentQrs.length === 0) return null;
+  return props.paymentQrs.find(q => q.method === localMethod.value && q.active === 1);
+});
 
 // 🔹 Validación simple
 const canConfirm = computed(() => {
@@ -56,9 +65,9 @@ const handleConfirm = () => {
         <option value="por_cobrar">Por cobrar</option>
       </select>
 
-      <!-- ====== AGREGADO: QR YAPE / PLIN ====== -->
+      <!-- ====== QR YAPE / PLIN DINÁMICO ====== -->
       <div
-        v-if="(localMethod === 'yape' || localMethod === 'plin') && paymentQR"
+        v-if="(localMethod === 'yape' || localMethod === 'plin') && currentQR"
         class="qr-box"
       >
         <p class="qr-title">
@@ -66,13 +75,13 @@ const handleConfirm = () => {
         </p>
 
         <img
-          :src="paymentQR.qr_url"
+          :src="currentQR.qr_url"
           alt="QR Pago"
           class="qr-img"
         />
 
-        <p class="qr-name">{{ paymentQR.display_name }}</p>
-        <p class="qr-phone">{{ paymentQR.phone_number }}</p>
+        <p class="qr-name">{{ currentQR.display_name }}</p>
+        <p class="qr-phone">{{ currentQR.phone_number }}</p>
       </div>
 
       <div v-if="localMethod !== 'por_cobrar'" class="optional-customer-name">
@@ -117,12 +126,15 @@ const handleConfirm = () => {
 .modal {
   background: white;
   padding: 20px;
-  width: 360px;           /* 🔑 antes 320 */
+  width: 360px;
   border-radius: 12px;
   text-align: center;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  max-height: 90vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .modal h2 {
   font-size: 24px;
@@ -172,7 +184,7 @@ button.cancel {
   cursor: pointer;
 }
 
-/* ====== AGREGADO: ESTILO QR ====== */
+/* ====== ESTILO QR ====== */
 .qr-box {
   margin-top: 10px;
   padding: 14px;
@@ -188,7 +200,7 @@ button.cancel {
 }
 .qr-img {
   width: 100%;
-  max-width: 260px;       /* 🔑 tamaño real de escaneo */
+  max-width: 260px;
   height: auto;
   margin: 12px auto;
 }
@@ -212,21 +224,8 @@ button.cancel {
   }
 }
 
-
-/* 🔑 Permitir scroll dentro del modal */
-.modal {
-  max-height: 90vh;        /* no se sale de la pantalla */
-  overflow-y: auto;        /* habilita scroll vertical */
-}
-
-/* Scroll suave en móviles */
-.modal {
-  -webkit-overflow-scrolling: touch;
-}
-
 .optional-customer-name input {
   margin-top: 8px;
   margin-bottom: 12px;
 }
-
 </style>
