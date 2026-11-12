@@ -71,22 +71,18 @@ const totalAmountByPaymentMethod = computed(() => {
   const totals = {
     efectivo: 0,
     yape: 0,
-    plin: 0
+    plin: 0,
+    por_cobrar: 0
   };
 
   sales.value.forEach(sale => {
-    const method = sale.payment_method?.toLowerCase();
-    
-    // 🔑 Usamos sale.items (como viene de la API) y respaldamos con sale.total si fuera necesario
-    const saleTotal = sale.items?.reduce((sum, item) => {
-      const qty = Number(item.quantity || 0);
-      const price = Number(item.price || 0);
-      return sum + qty * price;
-    }, 0) || Number(sale.total || 0);
+    const method = sale.payment_method?.trim().toLowerCase();
+    const saleTotal = Number(sale.total || 0); // 🔑 Usamos directamente el total de la venta
 
-    if (method === 'cash') totals.efectivo += saleTotal;
+    if (method === 'cash' || method === 'efectivo') totals.efectivo += saleTotal;
     else if (method === 'yape') totals.yape += saleTotal;
     else if (method === 'plin') totals.plin += saleTotal;
+    else if (method === 'por_cobrar') totals.por_cobrar += saleTotal;
   });
 
   totals.efectivo = Math.round(totals.efectivo * 100) / 100;
@@ -167,7 +163,6 @@ const calculateNetProfit = (salesList) => {
   let netProfit = 0;
 
   salesList.forEach(sale => {
-    // 🔑 Cambiado de sale_items a items
     sale.items?.forEach(item => {
       const qty = Number(item.quantity || 0);
       const salePrice = Number(item.price || 0);
@@ -280,19 +275,13 @@ const cancelSale = async (saleId) => {
 };
 
 /* =========================
-   TOTAL VENTAS
+   TOTAL VENTAS GENERAL
 ========================= */
 const calculateTotalAmount = (salesList) => {
   let total = 0;
-
   salesList.forEach(sale => {
-    sale.sale_items?.forEach(item => {
-      const qty = Number(item.quantity || 0);
-      const price = Number(item.price || 0);
-      total += price * qty;
-    });
+    total += Number(sale.total || 0);
   });
-
   return Math.round(total * 100) / 100;
 };
 
