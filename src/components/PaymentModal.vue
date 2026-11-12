@@ -24,8 +24,16 @@ const customerComment = ref('');
 
 // 🔹 Buscar dinámicamente el QR correspondiente al método seleccionado (yape o plin)
 const currentQR = computed(() => {
+  console.log('Método seleccionado:', localMethod.value);
+  console.log('Lista de QRs disponibles:', props.paymentQrs);
+
   if (!props.paymentQrs || props.paymentQrs.length === 0) return null;
-  return props.paymentQrs.find(q => q.method === localMethod.value && q.active === 1);
+  
+  // Relajamos un poco la validación de active y mayúsculas/minúsculas por si acaso
+  return props.paymentQrs.find(q => 
+    String(q.method).toLowerCase() === String(localMethod.value).toLowerCase() && 
+    (q.active == 1 || q.active === true || q.active === '1')
+  );
 });
 
 // 🔹 Validación simple
