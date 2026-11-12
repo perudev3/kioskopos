@@ -47,6 +47,9 @@ const selectedAccountBalance = computed(() => {
     : availableProfitSale.value;
 });
 
+/* =========================
+   MÉTODOS DE PAGO (Conteo y Totales)
+========================= */
 const salesByPaymentMethod = computed(() => {
   const counts = {
     efectivo: 0,
@@ -73,11 +76,13 @@ const totalAmountByPaymentMethod = computed(() => {
 
   sales.value.forEach(sale => {
     const method = sale.payment_method?.toLowerCase();
-    const saleTotal = sale.sale_items?.reduce((sum, item) => {
+    
+    // 🔑 Usamos sale.items (como viene de la API) y respaldamos con sale.total si fuera necesario
+    const saleTotal = sale.items?.reduce((sum, item) => {
       const qty = Number(item.quantity || 0);
       const price = Number(item.price || 0);
       return sum + qty * price;
-    }, 0) || 0;
+    }, 0) || Number(sale.total || 0);
 
     if (method === 'cash') totals.efectivo += saleTotal;
     else if (method === 'yape') totals.yape += saleTotal;
@@ -162,7 +167,8 @@ const calculateNetProfit = (salesList) => {
   let netProfit = 0;
 
   salesList.forEach(sale => {
-    sale.sale_items?.forEach(item => {
+    // 🔑 Cambiado de sale_items a items
+    sale.items?.forEach(item => {
       const qty = Number(item.quantity || 0);
       const salePrice = Number(item.price || 0);
       const basePrice = Number(item.product?.price || 0);
@@ -175,13 +181,14 @@ const calculateNetProfit = (salesList) => {
 };
 
 /* =========================
-   GANANCIA VENTA
+   TOTAL VENTAS MONTO
 ========================= */
 const calculateTotalSalesAmount = (salesList) => {
   let total = 0;
 
   salesList.forEach(sale => {
-    sale.sale_items?.forEach(item => {
+    // 🔑 Cambiado de sale_items a items
+    sale.items?.forEach(item => {
       const qty = Number(item.quantity || 0);
       const price = Number(item.price || 0);
       total += price * qty;
