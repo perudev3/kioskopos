@@ -1108,6 +1108,7 @@ const deleteProduct = async (product) => {
   overflow: hidden;
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
   max-height: 90vh;
+  max-height: 90dvh;
   display: flex;
   flex-direction: column;
 }
@@ -1118,6 +1119,7 @@ const deleteProduct = async (product) => {
   align-items: center;
   padding: 20px 24px;
   border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
 }
 
 .modal-header h3 {
@@ -1139,6 +1141,7 @@ const deleteProduct = async (product) => {
   cursor: pointer;
   color: #64748b;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .close-btn:hover {
@@ -1149,6 +1152,8 @@ const deleteProduct = async (product) => {
 .modal-body {
   padding: 24px;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1158,6 +1163,7 @@ const deleteProduct = async (product) => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
 }
 
 .form-group label {
@@ -1174,6 +1180,9 @@ const deleteProduct = async (product) => {
   font-size: 15px;
   outline: none;
   transition: all 0.2s ease;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .form-group input:focus,
@@ -1280,5 +1289,68 @@ const deleteProduct = async (product) => {
   font-size: 16px;
   font-weight: 500;
   margin: 0;
+}
+
+/* =========================
+   MODAL RESPONSIVE
+========================= */
+@media (max-width: 600px) {
+  .modal-backdrop {
+    padding: 10px;
+  }
+
+  .modal {
+    max-width: 100%;
+    max-height: 95vh;
+    max-height: 95dvh;
+    border-radius: 16px;
+  }
+
+  .modal-header {
+    padding: 14px 16px;
+  }
+
+  .modal-header h3 {
+    font-size: 18px;
+  }
+
+  .modal-body {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .form-group input,
+  .form-group select {
+    font-size: 16px;
+    padding: 11px 12px;
+  }
+
+  .image-preview {
+    height: 120px;
+  }
+
+  .btn-confirm,
+  .btn-cancel-modal {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 380px) {
+  .modal-backdrop {
+    padding: 6px;
+  }
+
+  .modal-header {
+    padding: 12px;
+  }
+
+  .modal-body {
+    padding: 12px;
+  }
 }
 </style>
