@@ -22,6 +22,15 @@ const user = ref(null);
 const loading = ref(false);
 const showProfitModal = ref(false);
 const profitToCapital = ref('');
+
+const summary = ref({
+  total_sales_amount: 0,
+  total_count: 0,
+  cash: 0,
+  yape: 0,
+  plin: 0,
+  credit: 0
+});
 const selectedAccount = ref('ganancia_neta'); // 'ganancia_neta' o 'ganancia_venta'
 
 // Registro de montos ya transferidos a capital
@@ -68,12 +77,13 @@ const salesByPaymentMethod = computed(() => {
 });
 
 const totalAmountByPaymentMethod = computed(() => {
-  const totals = {
-    efectivo: 0,
-    yape: 0,
-    plin: 0,
-    por_cobrar: 0
+  return {
+    efectivo: summary.value.cash,
+    yape: summary.value.yape,
+    plin: summary.value.plin,
+    por_cobrar: summary.value.credit
   };
+});
 
   sales.value.forEach(sale => {
     const method = sale.payment_method?.trim().toLowerCase();
@@ -137,12 +147,13 @@ const loadSales = async () => {
     const data = response.data;
 
     sales.value = data.sales || [];
+    summary.value = data.summary || { total_sales_amount: 0, total_count: 0, cash: 0, yape: 0, plin: 0, credit: 0 };
     transferredAmounts.value = data.transferredAmounts || { ganancia_neta: 0, ganancia_venta: 0 };
 
-    totalAmount.value = calculateTotalAmount(sales.value);
     totalNetProfit.value = calculateNetProfit(sales.value);
     totalProfitSale.value = calculateProfitSale(sales.value);
-    totalSales.value = sales.value.length;
+    totalSales.value = summary.value.total_count;
+    totalAmount.value = summary.value.total_sales_amount;
 
   } catch (err) {
     console.error('Error cargando ventas:', err);
