@@ -77,17 +77,16 @@ const salesByPaymentMethod = computed(() => {
 });
 
 const totalAmountByPaymentMethod = computed(() => {
-  return {
-    efectivo: summary.value.cash,
-    yape: summary.value.yape,
-    plin: summary.value.plin,
-    por_cobrar: summary.value.credit
+  const totals = {
+    efectivo: 0,
+    yape: 0,
+    plin: 0,
+    por_cobrar: 0
   };
-});
 
   sales.value.forEach(sale => {
     const method = sale.payment_method?.trim().toLowerCase();
-    const saleTotal = Number(sale.total || 0); // 🔑 Usamos directamente el total de la venta
+    const saleTotal = Number(sale.total || 0);
 
     if (method === 'cash' || method === 'efectivo') totals.efectivo += saleTotal;
     else if (method === 'yape') totals.yape += saleTotal;
@@ -98,6 +97,7 @@ const totalAmountByPaymentMethod = computed(() => {
   totals.efectivo = Math.round(totals.efectivo * 100) / 100;
   totals.yape = Math.round(totals.yape * 100) / 100;
   totals.plin = Math.round(totals.plin * 100) / 100;
+  totals.por_cobrar = Math.round(totals.por_cobrar * 100) / 100;
 
   return totals;
 });
