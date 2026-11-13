@@ -17,9 +17,17 @@
           <h1 class="store-name">{{ storeName }}</h1>
           <p class="store-tagline">{{ storeTagline }}</p>
         </div>
-        <div class="live-badge">
-          <span class="live-dot"></span>
-          Abierto ahora
+        
+        <div class="header-actions">
+          <div class="live-badge">
+            <span class="live-dot"></span>
+            Abierto ahora
+          </div>
+
+          <!-- ── Botón Compartir Catálogo ── -->
+          <button class="share-catalog-btn" @click="shareCatalog" title="Compartir catálogo">
+            <span>🔗</span> Compartir Catálogo
+          </button>
         </div>
 
         <!-- ── Input de búsqueda ── -->
@@ -119,6 +127,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import api from '../lib/axios';
+import Swal from 'sweetalert2';
 
 const route = useRoute();
 const products = ref([]);
@@ -153,7 +162,6 @@ const loadCatalogProducts = async (storeId) => {
   try {
     const response = await api.get(`/catalog/${storeId}/products`);
     products.value = response.data.products ?? [];
-    console.log('Productos cargados:', products.value);
   } catch (error) {
     console.error('Error cargando productos:', error);
   }
@@ -181,6 +189,41 @@ const getImageUrl = (fileName) => {
 // carrito
 const addToCart = (id) => {
   if (!addedIds.value.includes(id)) addedIds.value.push(id);
+};
+
+// ── Función para compartir / copiar link del catálogo ──
+const shareCatalog = async () => {
+  const catalogUrl = window.location.href;
+
+  // Si el navegador soporta Web Share API (ideal para móviles / WhatsApp directo)
+  if (navigator.share) {
+    try {
+      await navigator.share({
+        title: storeName.value,
+        text: `¡Mira nuestro catálogo virtual en ${storeName.value}! 🛒`,
+        url: catalogUrl,
+      });
+      return;
+    } catch (err) {
+      // Si el usuario cancela, no hacemos nada
+      if (err.name !== 'AbortError') console.error('Error al compartir:', err);
+    }
+  }
+
+  // Fallback: Copiar al portapapeles y mostrar aviso con SweetAlert2
+  try {
+    await navigator.clipboard.writeText(catalogUrl);
+    Swal.fire({
+      icon: 'success',
+      title: '¡Link copiado!',
+      text: 'El enlace del catálogo se ha copiado al portapapeles. ¡Compártelo con tus clientes!',
+      timer: 2500,
+      showConfirmButton: false,
+    });
+  } catch (err) {
+    console.error('Error al copiar al portapapeles:', err);
+    alert('Copia este enlace: ' + catalogUrl);
+  }
 };
 
 // productos filtrados por búsqueda
@@ -431,5 +474,34 @@ onMounted(async () => {
   .stock-lbl     { font-size: .72rem; }
   .avail-txt     { font-size: .68rem; }
   .stock-corner  { font-size: .6rem; padding: .15em .5em; }
+}
+
+/* Agrega este pequeño estilo para alinear el nuevo botón en la cabecera */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.share-catalog-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+  transition: all 0.2s ease;
+}
+
+.share-catalog-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.35);
 }
 </style>

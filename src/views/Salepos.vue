@@ -1,6 +1,6 @@
 <script setup>
 import html2canvas from 'html2canvas'
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import api from '../lib/axios'
 import Swal from 'sweetalert2'
 import Quagga from 'quagga'
@@ -14,7 +14,6 @@ const showPayment = ref(false)
 const paymentMethod = ref('cash')
 const user = ref(null)
 const loading = ref(false)
-const selectedQR = ref(null)
 const productFilter = ref('')
 const showProductListFallback = ref(false)
 const viewMode = ref('grid') // 'grid' o 'list'
@@ -78,24 +77,22 @@ const calculatedPrice = computed(() => {
 
 // 1. Mantienes tu declaración de variables
 const paymentQRs = ref([])
-const paymentMethod = ref('cash') // o el valor por defecto que tengas
-
 // 2. BORRAS el watch completo y lo cambias por esto:
 const selectedQR = computed(() => {
   if (paymentMethod.value !== 'yape' && paymentMethod.value !== 'plin') {
-    return null
+    return null;
   }
   
   if (!paymentQRs.value || paymentQRs.value.length === 0) {
-    return null
+    return null;
   }
 
-  // Busca el QR correspondiente sin importar mayúsculas/minúsculas
+  // Ahora sí, como paymentQRs.value es un array, .find() buscará sin problemas
   return paymentQRs.value.find(qr => 
     qr.method.toLowerCase() === paymentMethod.value.toLowerCase() && 
     (qr.active == 1 || qr.active === true)
-  ) || null
-})
+  ) || null;
+});
 
 const updateQuantity = (id, newQty) => {
   const item = cart.value.find(p => p.id === id)
@@ -193,7 +190,7 @@ const loadProducts = async () => {
 
     const response = await api.get('/pos/data')
     products.value = response.data.products || []
-    paymentQRs.value = response.data.paymentQRs || []
+    paymentQRs.value = response.data.paymentQrs || []
 
   } catch (error) {
     console.error('Error cargando datos del POS:', error)

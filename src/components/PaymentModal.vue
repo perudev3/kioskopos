@@ -7,7 +7,7 @@ const props = defineProps({
   method: String,
 
   /* ====== CAMBIO: Ahora recibe el array completo de la API ====== */
-  paymentQrs: {
+  paymentQR: {
     type: Array,
     default: () => []
   }
@@ -24,16 +24,7 @@ const customerComment = ref('');
 
 // 🔹 Buscar dinámicamente el QR correspondiente al método seleccionado (yape o plin)
 const currentQR = computed(() => {
-  console.log('Método seleccionado:', localMethod.value);
-  console.log('Lista de QRs disponibles:', props.paymentQrs);
-
-  if (!props.paymentQrs || props.paymentQrs.length === 0) return null;
-  
-  // Relajamos un poco la validación de active y mayúsculas/minúsculas por si acaso
-  return props.paymentQrs.find(q => 
-    String(q.method).toLowerCase() === String(localMethod.value).toLowerCase() && 
-    (q.active == 1 || q.active === true || q.active === '1')
-  );
+  return props.paymentQR || null;
 });
 
 // 🔹 Validación simple
