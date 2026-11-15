@@ -98,33 +98,95 @@ const login = async () => {
 </script>
 
 <style scoped>
-/* Página completa */
+/* ---------- Página completa ---------- */
 .login-page {
+  position: relative;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #0b3c5d, #1fa2c1);
-  padding: 20px;
+  padding: 24px 20px;
   box-sizing: border-box;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 15% 10%, rgba(31, 162, 193, 0.45), transparent 45%),
+    radial-gradient(circle at 90% 90%, rgba(34, 197, 94, 0.22), transparent 40%),
+    linear-gradient(145deg, #072a43 0%, #0b3c5d 50%, #11708f 100%);
+  font-family: 'Inter', 'Segoe UI', Roboto, system-ui, -apple-system, sans-serif;
 }
 
-/* Tarjeta */
+/* Círculos decorativos de fondo */
+.login-page::before,
+.login-page::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.login-page::before {
+  width: 420px;
+  height: 420px;
+  top: -140px;
+  right: -120px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.login-page::after {
+  width: 320px;
+  height: 320px;
+  bottom: -120px;
+  left: -100px;
+  background: rgba(31, 162, 193, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* ---------- Tarjeta ---------- */
 .login-card {
+  position: relative;
+  z-index: 1;
   background: #ffffff;
-  border-radius: 24px;
-  padding: 40px 30px;
+  border-radius: 28px;
+  padding: 44px 34px 36px;
   width: 100%;
-  max-width: 380px;
-  box-shadow: 0 18px 35px rgba(0, 0, 0, 0.25);
+  max-width: 400px;
+  box-shadow:
+    0 30px 60px rgba(3, 20, 34, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.35);
   text-align: center;
   display: flex;
   flex-direction: column;
-  gap: 25px;
+  gap: 26px;
   box-sizing: border-box;
+  overflow: hidden;
+  animation: card-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-/* Logo */
+/* Franja de color superior */
+.login-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: linear-gradient(90deg, #1fa2c1, #22c55e, #f59e0b);
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ---------- Logo ---------- */
 .logo {
   display: flex;
   flex-direction: column;
@@ -133,25 +195,28 @@ const login = async () => {
 }
 
 .logo img {
-  max-width: 90px;
+  width: 120px;
+  max-width: 100%;
   height: auto;
   object-fit: contain;
+  filter: drop-shadow(0 10px 14px rgba(11, 60, 93, 0.2));
 }
 
 .logo h1 {
   font-size: 26px;
-  font-weight: 700;
+  font-weight: 800;
   color: #0b3c5d;
+  letter-spacing: -0.5px;
 }
 
-/* Form */
+/* ---------- Formulario ---------- */
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
-/* Inputs */
+/* ---------- Inputs ---------- */
 .input-group {
   display: flex;
   flex-direction: column;
@@ -160,71 +225,168 @@ const login = async () => {
 
 .input-group label {
   font-weight: 600;
-  margin-bottom: 6px;
-  color: #0f172a;
-  font-size: 14px;
+  margin-bottom: 7px;
+  color: #334155;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  transition: color 0.2s ease;
+}
+
+.input-group:focus-within label {
+  color: #0b3c5d;
 }
 
 .input-group input {
+  width: 100%;
+  box-sizing: border-box;
   padding: 14px 16px;
-  border-radius: 12px;
-  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  border: 1.5px solid #dbe4ee;
+  background: #f5f8fb;
+  color: #0f172a;
   outline: none;
-  font-size: 15px;
+  font-size: 16px;
+  font-family: inherit;
   transition: all 0.25s ease-in-out;
+}
+
+.input-group input::placeholder {
+  color: #94a3b8;
+}
+
+.input-group input:hover {
+  border-color: #b6c6d8;
 }
 
 .input-group input:focus {
+  background: #ffffff;
   border-color: #1fa2c1;
-  box-shadow: 0 0 0 3px rgba(31, 162, 193, 0.25);
+  box-shadow: 0 0 0 4px rgba(31, 162, 193, 0.2);
 }
 
-/* Botón */
+/* Autocompletado del navegador */
+.input-group input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 40px #eef6fb inset;
+  -webkit-text-fill-color: #0f172a;
+}
+
+/* ---------- Botón ---------- */
 button {
-  padding: 14px 0;
-  border-radius: 12px;
+  position: relative;
+  margin-top: 6px;
+  padding: 15px 0;
+  border-radius: 14px;
   border: none;
-  background: #22c55e;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
   color: #ffffff;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 16px;
+  font-family: inherit;
+  letter-spacing: 0.4px;
   cursor: pointer;
   transition: all 0.25s ease-in-out;
-  box-shadow: 0 8px 16px rgba(34, 197, 94, 0.35);
+  box-shadow: 0 10px 20px rgba(34, 197, 94, 0.35);
 }
 
 button:hover {
-  background: #16a34a;
-  box-shadow: 0 10px 20px rgba(34, 197, 94, 0.45);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 26px rgba(34, 197, 94, 0.45);
+}
+
+button:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 12px rgba(34, 197, 94, 0.35);
+}
+
+button:focus-visible {
+  outline: 3px solid rgba(31, 162, 193, 0.5);
+  outline-offset: 3px;
 }
 
 button:disabled {
-  opacity: 0.6;
+  opacity: 0.75;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 6px 12px rgba(34, 197, 94, 0.25);
 }
 
-/* Error */
+/* Indicador de carga mientras está deshabilitado */
+button:disabled::after {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-left: 10px;
+  vertical-align: -2px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- Error ---------- */
 .error-msg {
-  color: #dc2626;
+  margin: 0;
+  padding: 12px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-left: 4px solid #dc2626;
+  border-radius: 12px;
+  color: #b91c1c;
   font-weight: 500;
   font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+  animation: shake 0.4s ease;
 }
 
-/* Responsive */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+/* ---------- Responsive ---------- */
 @media (max-width: 480px) {
+  .login-page {
+    padding: 16px;
+  }
+
   .login-card {
-    padding: 30px 20px;
-    max-width: 320px;
+    padding: 36px 22px 28px;
+    max-width: 360px;
+    border-radius: 24px;
+    gap: 22px;
   }
 
   .logo img {
-    max-width: 50%;
-    margin-bottom: -50px;
+    width: 100px;
+    max-width: 100%;
   }
 
   button {
-    font-size: 15px;
-    padding: 12px 0;
+    font-size: 16px;
+    padding: 14px 0;
+  }
+}
+
+/* Respeta usuarios que prefieren menos movimiento */
+@media (prefers-reduced-motion: reduce) {
+  .login-card,
+  .error-msg,
+  button:disabled::after {
+    animation: none;
+  }
+
+  button,
+  .input-group input {
+    transition: none;
   }
 }
 </style>
