@@ -24,8 +24,8 @@
             Abierto ahora
           </div>
 
-          <!-- ── Botón Compartir Catálogo ── -->
-          <button class="share-catalog-btn" @click="shareCatalog" title="Compartir catálogo">
+          <!-- ── Botón Compartir Catálogo (solo visible para el dueño de la tienda) ── -->
+          <button v-if="isOwner" class="share-catalog-btn" @click="shareCatalog" title="Compartir catálogo">
             <span>🔗</span> Compartir Catálogo
           </button>
         </div>
@@ -138,6 +138,17 @@ const addedIds = ref([]);
 const storeName = ref('Mi Kiosco');
 const storeTagline = ref('Todo lo que necesitas');
 const activeFilter = ref('all');
+
+// solo el dueño de la tienda (usuario logueado) ve el botón de compartir
+const isOwner = computed(() => {
+  try {
+    const token = localStorage.getItem('kiopos_token');
+    const user = JSON.parse(localStorage.getItem('kiopos_user') || 'null');
+    return !!token && !!user && String(user.id) === String(route.params.storeId);
+  } catch (e) {
+    return false;
+  }
+});
 
 // stock
 const stockStatus = (p) => {
