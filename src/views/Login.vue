@@ -102,17 +102,14 @@ const login = async () => {
 .login-page {
   position: relative;
   min-height: 100vh;
-  min-height: 100dvh;
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 24px 20px;
   box-sizing: border-box;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 15% 10%, rgba(31, 162, 193, 0.45), transparent 45%),
-    radial-gradient(circle at 90% 90%, rgba(34, 197, 94, 0.22), transparent 40%),
-    linear-gradient(145deg, #072a43 0%, #0b3c5d 50%, #11708f 100%);
+  background-color: #0b3c5d;
+  background-image: linear-gradient(145deg, #072a43 0%, #0b3c5d 50%, #11708f 100%);
   font-family: 'Inter', 'Segoe UI', Roboto, system-ui, -apple-system, sans-serif;
 }
 
@@ -161,7 +158,6 @@ const login = async () => {
   gap: 26px;
   box-sizing: border-box;
   overflow: hidden;
-  animation: card-in 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 /* Franja de color superior */
@@ -173,17 +169,6 @@ const login = async () => {
   right: 0;
   height: 6px;
   background: linear-gradient(90deg, #1fa2c1, #22c55e, #f59e0b);
-}
-
-@keyframes card-in {
-  from {
-    opacity: 0;
-    transform: translateY(18px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
 }
 
 /* ---------- Logo ---------- */
@@ -310,26 +295,6 @@ button:disabled {
   box-shadow: 0 6px 12px rgba(34, 197, 94, 0.25);
 }
 
-/* Indicador de carga mientras está deshabilitado */
-button:disabled::after {
-  content: '';
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  margin-left: 10px;
-  vertical-align: -2px;
-  border: 2px solid rgba(255, 255, 255, 0.45);
-  border-top-color: #ffffff;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* ---------- Error ---------- */
 .error-msg {
   margin: 0;
@@ -343,13 +308,6 @@ button:disabled::after {
   font-size: 14px;
   line-height: 1.4;
   text-align: left;
-  animation: shake 0.4s ease;
-}
-
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-6px); }
-  75% { transform: translateX(6px); }
 }
 
 /* ---------- Responsive ---------- */
@@ -373,20 +331,6 @@ button:disabled::after {
   button {
     font-size: 16px;
     padding: 14px 0;
-  }
-}
-
-/* Respeta usuarios que prefieren menos movimiento */
-@media (prefers-reduced-motion: reduce) {
-  .login-card,
-  .error-msg,
-  button:disabled::after {
-    animation: none;
-  }
-
-  button,
-  .input-group input {
-    transition: none;
   }
 }
 </style>
