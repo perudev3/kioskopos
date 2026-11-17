@@ -1,13 +1,92 @@
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue';
 import { Document, Packer, Paragraph, ImageRun } from 'docx';
 import api from '../lib/axios';
 import JsBarcode from 'jsbarcode';
 import Swal from 'sweetalert2';
+import {
+  MultiFormatReader,
+  BinaryBitmap,
+  HybridBinarizer,
+  HTMLCanvasElementLuminanceSource,
+  DecodeHintType,
+  BarcodeFormat,
+} from '@zxing/library';
 
 onMounted(async () => {
   await loadProducts();
+  window.addEventListener('keydown', onWindowKeydown);
 });
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onWindowKeydown);
+  stopScanner();
+  if (objectUrl.value) URL.revokeObjectURL(objectUrl.value);
+});
+
+/* =========================
+   UTILIDADES
+========================= */
+const toast = (icon, title) =>
+  Swal.fire({
+    toast: true,
+    position: 'top',
+    icon,
+    title,
+    showConfirmButton: false,
+    timer: 2600,
+  });
+
+// Usa el formato nativo (EAN13/EAN8/UPC) para códigos de envoltorio y CODE128 para los internos KP-
+const renderBarcode = (el, code, options = {}) => {
+  const value = String(code);
+  const format = /^\d{13}$/.test(value)
+    ? 'EAN13'
+    : /^\d{8}$/.test(value)
+    ? 'EAN8'
+    : /^\d{12}$/.test(value)
+    ? 'UPC'
+    : 'CODE128';
+
+  try {
+    JsBarcode(el, value, { format, ...options });
+  } catch (e) {
+    JsBarcode(el, value, { format: 'CODE128', ...options });
+  }
+};
+
+const isValidGtin = (code) => {
+  if (!/^(\d{8}|\d{12,14})$/.test(code)) return false;
+  const digits = code.split('').map(Number);
+  const check = digits.pop();
+  let sum = 0;
+  digits.reverse().forEach((d, i) => {
+    sum += d * (i % 2 === 0 ? 3 : 1);
+  });
+  return (10 - (sum % 10)) % 10 === check;
+};
+
+const beep = () => {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = 1000;
+    gain.gain.value = 0.05;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    setTimeout(() => {
+      osc.stop();
+      ctx.close();
+    }, 120);
+  } catch (e) {
+    /* sin audio */
+  }
+  if (navigator.vibrate) navigator.vibrate(80);
+};
 
 /* =========================
    DESCARGA MASIVA DE BARCODES EN WORD
@@ -26,34 +105,41 @@ const downloadAllBarcodesWord = async () => {
     if (!product.barcode) continue;
 
     try {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-
-      canvas.width = 250;
-      canvas.height = 100;
-
-      ctx.fillStyle = 'white';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.fillStyle = 'black';
-      ctx.font = 'bold 14px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText(product.name, canvas.width / 2, 20);
-
-      JsBarcode(canvas, product.barcode, {
-        format: 'CODE128',
+      const barcodeCanvas = document.createElement('canvas');
+      renderBarcode(barcodeCanvas, product.barcode, {
         width: 2,
         height: 60,
         displayValue: true,
         textMargin: 5,
-        margin: 0,
+        margin: 10,
       });
 
-      const arrayBuffer = await (await fetch(canvas.toDataURL('image/png'))).arrayBuffer();
+      const finalCanvas = document.createElement('canvas');
+      const ctx = finalCanvas.getContext('2d');
+      finalCanvas.width = Math.max(barcodeCanvas.width, 250);
+      finalCanvas.height = barcodeCanvas.height + 30;
+
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+
+      ctx.fillStyle = 'black';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(product.name, finalCanvas.width / 2, 20, finalCanvas.width - 10);
+
+      ctx.drawImage(barcodeCanvas, (finalCanvas.width - barcodeCanvas.width) / 2, 30);
+
+      const arrayBuffer = await (await fetch(finalCanvas.toDataURL('image/png'))).arrayBuffer();
 
       doc.sections[0].children.push(
         new Paragraph({
-          children: [new ImageRun({ data: arrayBuffer, transformation: { width: 250, height: 100 } })],
+          children: [
+            new ImageRun({
+              type: 'png',
+              data: arrayBuffer,
+              transformation: { width: finalCanvas.width, height: finalCanvas.height },
+            }),
+          ],
           spacing: { after: 400 }
         })
       );
@@ -169,8 +255,7 @@ const printAllBarcodes = async () => {
       if (!p.barcode) return;
       const canvas = printWindow.document.getElementById(`barcode-${p.id}`);
       if (canvas) {
-        JsBarcode(canvas, p.barcode, {
-          format: 'CODE128',
+        renderBarcode(canvas, p.barcode, {
           width: 2,
           height: 70,
           displayValue: false,
@@ -194,25 +279,67 @@ const price = ref('');
 const sale_price = ref('');
 const stock = ref('');
 const unit_type = ref('UNIT');
+const barcode = ref('');
 const file = ref(null);
 const imageFile = ref(null);
+const remoteImageUrl = ref(null); // imagen que vino del catálogo
+const catalogNote = ref('');
+const keepScanning = ref(true);
+const lookupLoading = ref(false);
 
-const imagePreview = computed(() => {
-  if (imageFile.value) return URL.createObjectURL(imageFile.value);
-  if (editingProduct.value && editingProduct.value.image_url) return editingProduct.value.image_url;
-  return null;
-});
-
-const onFileChange = (e) => {
-  imageFile.value = e.target.files[0];
-  file.value = imageFile.value;
-};
+const barcodeInput = ref(null);
+const priceInput = ref(null);
 
 const products = ref([]);
 const showModal = ref(false);
 const filterName = ref('');
 const viewMode = ref('grid');
 const editingProduct = ref(null);
+
+const objectUrl = ref(null);
+watch(imageFile, (f) => {
+  if (objectUrl.value) URL.revokeObjectURL(objectUrl.value);
+  objectUrl.value = f ? URL.createObjectURL(f) : null;
+});
+
+const imagePreview = computed(() => {
+  if (objectUrl.value) return objectUrl.value;
+  if (remoteImageUrl.value) return remoteImageUrl.value;
+  if (editingProduct.value && editingProduct.value.image_url) return editingProduct.value.image_url;
+  return null;
+});
+
+const onFileChange = (e) => {
+  imageFile.value = e.target.files[0] || null;
+  file.value = imageFile.value;
+  if (imageFile.value) remoteImageUrl.value = null;
+};
+
+const resetForm = () => {
+  name.value = '';
+  price.value = '';
+  sale_price.value = '';
+  stock.value = '';
+  unit_type.value = 'UNIT';
+  barcode.value = '';
+  imageFile.value = null;
+  file.value = null;
+  remoteImageUrl.value = null;
+  catalogNote.value = '';
+  editingProduct.value = null;
+};
+
+const closeModal = () => {
+  showModal.value = false;
+  resetForm();
+};
+
+const openNewProductModal = async () => {
+  resetForm();
+  showModal.value = true;
+  await nextTick();
+  barcodeInput.value?.focus();
+};
 
 /* =========================
    GUARDAR / ACTUALIZAR EN API
@@ -229,11 +356,16 @@ const saveProduct = async () => {
 
   if (imageFile.value) {
     formData.append('image', imageFile.value);
+  } else if (!isEditing && remoteImageUrl.value) {
+    formData.append('image_url', remoteImageUrl.value);
+  }
+
+  if (!isEditing && barcode.value) {
+    formData.append('barcode', barcode.value.trim());
   }
 
   try {
     if (isEditing) {
-      // Usamos POST con _method si fuera necesario, o ruta específica de actualización en Laravel
       await api.post(`/products/${editingProduct.value.id}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -243,26 +375,354 @@ const saveProduct = async () => {
       });
     }
 
-    name.value = '';
-    price.value = '';
-    sale_price.value = '';
-    stock.value = '';
-    unit_type.value = 'UNIT';
-    imageFile.value = null;
-    editingProduct.value = null;
-    showModal.value = false;
-
+    closeModal();
     await loadProducts();
-    
-    Swal.fire(
-      'Éxito',
-      isEditing ? 'Producto actualizado' : 'Producto registrado',
-      'success'
-    );
+
+    if (!isEditing && keepScanning.value) {
+      toast('success', 'Producto registrado. Escanea el siguiente');
+      startScanner();
+    } else {
+      Swal.fire(
+        'Éxito',
+        isEditing ? 'Producto actualizado' : 'Producto registrado',
+        'success'
+      );
+    }
   } catch (error) {
     console.error('Error guardando producto:', error);
-    Swal.fire('Error', error.response?.data?.message || 'No se pudo guardar el producto', 'error');
+    const errors = error.response?.data?.errors;
+    const firstError = errors ? Object.values(errors)[0]?.[0] : null;
+    Swal.fire('Error', firstError || error.response?.data?.message || 'No se pudo guardar el producto', 'error');
   }
+};
+
+/* =========================
+   CONSULTA POR CÓDIGO DE BARRAS
+========================= */
+const fetchLookup = async (code) => {
+  lookupLoading.value = true;
+  try {
+    const { data } = await api.get(`/products/lookup/${encodeURIComponent(code)}`);
+    return data;
+  } catch (error) {
+    console.error('Error consultando código:', error);
+    toast('info', 'No se pudo consultar el catálogo. Completa los datos manualmente');
+    return null;
+  } finally {
+    lookupLoading.value = false;
+  }
+};
+
+const lookupFromForm = async () => {
+  const code = barcode.value.trim();
+  if (!code) return;
+
+  const data = await fetchLookup(code);
+
+  if (data?.exists) {
+    const r = await Swal.fire({
+      title: 'Producto ya registrado',
+      text: `${data.product.name} — Stock actual: ${data.product.stock}`,
+      icon: 'info',
+      showCancelButton: true,
+      confirmButtonText: 'Editar / actualizar stock',
+      cancelButtonText: 'Cerrar',
+    });
+
+    if (r.isConfirmed) {
+      const existing = data.product;
+      closeModal();
+      editProduct(existing);
+    } else {
+      barcode.value = '';
+    }
+    return;
+  }
+
+  if (data?.external) {
+    if (!name.value) name.value = data.external.name;
+    if (!imageFile.value && data.external.image_url) remoteImageUrl.value = data.external.image_url;
+    catalogNote.value = 'Datos cargados del catálogo. Completa precio base, precio de venta y stock.';
+    await nextTick();
+    priceInput.value?.focus();
+  } else if (data) {
+    catalogNote.value = 'Código no encontrado en el catálogo. Ingresa el nombre y los precios.';
+  }
+};
+
+// Punto de entrada único: cámara, pistola USB/Bluetooth o campo manual
+const handleScannedCode = async (code) => {
+  const formOpenForNew = showModal.value && !editingProduct.value;
+  if (!formOpenForNew) await openNewProductModal();
+  barcode.value = String(code).trim();
+  await lookupFromForm();
+};
+
+/* =========================
+   LECTOR POR PISTOLA (teclado) FUERA DE UN INPUT
+========================= */
+let wedgeBuffer = '';
+let wedgeLast = 0;
+
+const onWindowKeydown = (e) => {
+  if (showScanner.value || Swal.isVisible()) return;
+
+  const tag = (e.target?.tagName || '').toLowerCase();
+  if (['input', 'textarea', 'select'].includes(tag)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  const now = Date.now();
+  if (now - wedgeLast > 60) wedgeBuffer = '';
+  wedgeLast = now;
+
+  if (e.key === 'Enter') {
+    if (wedgeBuffer.length >= 6) {
+      const code = wedgeBuffer;
+      wedgeBuffer = '';
+      handleScannedCode(code);
+    }
+    wedgeBuffer = '';
+    return;
+  }
+
+  if (e.key.length === 1) wedgeBuffer += e.key;
+};
+
+/* =========================
+   ESCÁNER POR CÁMARA
+========================= */
+const showScanner = ref(false);
+const scannerError = ref('');
+const videoEl = ref(null);
+const torchSupported = ref(false);
+const torchOn = ref(false);
+const zoomSupported = ref(false);
+const zoomMin = ref(1);
+const zoomMax = ref(1);
+const zoomStep = ref(0.1);
+const zoomValue = ref(1);
+
+const NATIVE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'code_128'];
+const CONFIRM_READS = 2;       // lecturas iguales seguidas para dar el código por bueno
+const READ_WINDOW_MS = 1200;   // ventana máxima entre lecturas
+
+let stream = null;
+let scanTimer = null;
+let stopped = true;
+let detector = null;
+let zxingReader = null;
+let candidate = null;
+let candidateCount = 0;
+let candidateAt = 0;
+const decodeCanvas = document.createElement('canvas');
+
+const startScanner = async () => {
+  scannerError.value = '';
+  torchOn.value = false;
+  candidate = null;
+  candidateCount = 0;
+  showScanner.value = true;
+  await nextTick();
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    scannerError.value = 'Tu navegador no permite usar la cámara. Usa HTTPS o escribe el código manualmente.';
+    return;
+  }
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30 },
+      },
+    });
+
+    const video = videoEl.value;
+    video.srcObject = stream;
+    video.setAttribute('playsinline', 'true');
+    await video.play();
+
+    await setupTrackCapabilities();
+
+    stopped = false;
+
+    // 1) Detector nativo (Chrome/Android): el más rápido y preciso
+    if ('BarcodeDetector' in window) {
+      try {
+        const supported = await window.BarcodeDetector.getSupportedFormats();
+        const formats = NATIVE_FORMATS.filter((f) => supported.includes(f));
+        if (formats.length) {
+          detector = new window.BarcodeDetector({ formats });
+          loopNative();
+          return;
+        }
+      } catch (e) {
+        /* se usa ZXing */
+      }
+    }
+
+    // 2) Respaldo ZXing (iOS/Safari, Firefox, etc.)
+    const hints = new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.EAN_13,
+      BarcodeFormat.EAN_8,
+      BarcodeFormat.UPC_A,
+      BarcodeFormat.CODE_128,
+    ]);
+    hints.set(DecodeHintType.TRY_HARDER, true);
+    zxingReader = new MultiFormatReader();
+    zxingReader.setHints(hints);
+    loopZxing();
+  } catch (error) {
+    console.error('Error iniciando cámara:', error);
+    scannerError.value =
+      error?.name === 'NotAllowedError'
+        ? 'Permiso de cámara denegado. Actívalo en el navegador e intenta de nuevo.'
+        : 'No se pudo iniciar la cámara.';
+  }
+};
+
+// Enfoque continuo + zoom inicial para no tener que acercar tanto el celular
+const setupTrackCapabilities = async () => {
+  const track = stream?.getVideoTracks()[0];
+  if (!track) return;
+
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+
+  const advanced = [];
+  if (caps.focusMode?.includes('continuous')) advanced.push({ focusMode: 'continuous' });
+  if (caps.exposureMode?.includes('continuous')) advanced.push({ exposureMode: 'continuous' });
+  if (advanced.length) {
+    await track.applyConstraints({ advanced }).catch(() => {});
+  }
+
+  torchSupported.value = !!caps.torch;
+
+  if (caps.zoom) {
+    zoomSupported.value = true;
+    zoomMin.value = caps.zoom.min;
+    zoomMax.value = caps.zoom.max;
+    zoomStep.value = caps.zoom.step || 0.1;
+    const initial = Math.min(Math.max(2, caps.zoom.min), caps.zoom.max);
+    zoomValue.value = initial;
+    await track.applyConstraints({ advanced: [{ zoom: initial }] }).catch(() => {});
+  } else {
+    zoomSupported.value = false;
+  }
+};
+
+const onZoomInput = async () => {
+  const track = stream?.getVideoTracks()[0];
+  if (!track) return;
+  await track.applyConstraints({ advanced: [{ zoom: Number(zoomValue.value) }] }).catch(() => {});
+};
+
+const toggleTorch = async () => {
+  const track = stream?.getVideoTracks()[0];
+  if (!track) return;
+  torchOn.value = !torchOn.value;
+  await track.applyConstraints({ advanced: [{ torch: torchOn.value }] }).catch(() => {
+    torchOn.value = false;
+  });
+};
+
+const loopNative = async () => {
+  if (stopped) return;
+  const video = videoEl.value;
+
+  try {
+    if (video && video.readyState >= 2) {
+      const codes = await detector.detect(video);
+      if (codes.length) handleRead(codes[0].rawValue);
+    }
+  } catch (e) {
+    /* frame sin código */
+  }
+
+  if (!stopped) scanTimer = setTimeout(loopNative, 80);
+};
+
+const loopZxing = () => {
+  if (stopped) return;
+  const video = videoEl.value;
+
+  if (video && video.readyState >= 2 && video.videoWidth) {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    // Región central: menos ruido y decodificación más rápida
+    const cw = Math.round(vw * 0.9);
+    const ch = Math.round(vh * 0.5);
+    const sx = Math.round((vw - cw) / 2);
+    const sy = Math.round((vh - ch) / 2);
+    const scale = Math.min(1, 1280 / cw);
+
+    decodeCanvas.width = Math.round(cw * scale);
+    decodeCanvas.height = Math.round(ch * scale);
+    const ctx = decodeCanvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(video, sx, sy, cw, ch, 0, 0, decodeCanvas.width, decodeCanvas.height);
+
+    try {
+      const bitmap = new BinaryBitmap(new HybridBinarizer(new HTMLCanvasElementLuminanceSource(decodeCanvas)));
+      const result = zxingReader.decode(bitmap);
+      handleRead(result.getText());
+    } catch (e) {
+      /* NotFoundException: frame sin código */
+    }
+  }
+
+  if (!stopped) scanTimer = setTimeout(loopZxing, 90);
+};
+
+// Valida el checksum y exige lecturas repetidas para evitar falsos positivos
+const handleRead = (raw) => {
+  const code = String(raw || '').trim();
+  if (!code) return;
+
+  if (/^\d+$/.test(code)) {
+    if (!isValidGtin(code)) return;
+  } else if (code.length < 4) {
+    return;
+  }
+
+  const now = Date.now();
+  if (code === candidate && now - candidateAt <= READ_WINDOW_MS) {
+    candidateCount += 1;
+  } else {
+    candidate = code;
+    candidateCount = 1;
+  }
+  candidateAt = now;
+
+  if (candidateCount >= CONFIRM_READS) {
+    onScanSuccess(code);
+  }
+};
+
+const onScanSuccess = async (code) => {
+  beep();
+  stopScanner();
+  await handleScannedCode(code);
+};
+
+const stopScanner = () => {
+  stopped = true;
+  if (scanTimer) clearTimeout(scanTimer);
+  scanTimer = null;
+  candidate = null;
+  candidateCount = 0;
+
+  if (stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
+  if (videoEl.value) videoEl.value.srcObject = null;
+
+  detector = null;
+  zxingReader = null;
+  showScanner.value = false;
 };
 
 /* =========================
@@ -271,8 +731,7 @@ const saveProduct = async () => {
 const downloadBarcode = (product) => {
   const barcodeCanvas = document.createElement('canvas');
 
-  JsBarcode(barcodeCanvas, product.barcode, {
-    format: 'CODE128',
+  renderBarcode(barcodeCanvas, product.barcode, {
     width: 2,
     height: 60,
     displayValue: true,
@@ -315,11 +774,13 @@ const getProfitPercentage = (p) => {
 };
 
 const editProduct = (product) => {
+  resetForm();
   editingProduct.value = product;
   name.value = product.name;
   price.value = product.price;
   sale_price.value = product.sale_price;
   stock.value = product.stock;
+  barcode.value = product.barcode || '';
   unit_type.value = product.unit_type || 'UNIT';
   showModal.value = true;
 };
@@ -347,8 +808,7 @@ const generateBarcodes = async () => {
     const el = document.getElementById(`barcode-${p.id}`);
     if (el) {
       try {
-        JsBarcode(el, p.barcode, {
-          format: 'CODE128',
+        renderBarcode(el, p.barcode, {
           width: 2,
           height: 50,
           displayValue: true,
@@ -417,7 +877,19 @@ const deleteProduct = async (product) => {
           <p class="subtitle">{{ totalProducts }} productos en inventario</p>
         </div>
         <div class="header-actions">
-          <button @click="showModal = true" class="btn-add">
+          <button @click="startScanner" class="btn-scan" title="Escanear código de barras">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+              <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+              <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+              <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+              <line x1="7" y1="8" x2="7" y2="16"></line>
+              <line x1="11" y1="8" x2="11" y2="16"></line>
+              <line x1="15" y1="8" x2="15" y2="16"></line>
+            </svg>
+            <span>Escanear</span>
+          </button>
+          <button @click="openNewProductModal" class="btn-add">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -607,11 +1079,11 @@ const deleteProduct = async (product) => {
     </div>
 
     <!-- Modal -->
-    <div v-if="showModal" class="modal-backdrop" @click.self="showModal = false; editingProduct = null; imageFile = null">
+    <div v-if="showModal" class="modal-backdrop" @click.self="closeModal">
       <div class="modal">
         <div class="modal-header">
           <h3>{{ editingProduct ? 'Editar Producto' : 'Nuevo Producto' }}</h3>
-          <button @click="showModal = false; editingProduct = null; imageFile = null" class="close-btn">
+          <button @click="closeModal" class="close-btn">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -620,6 +1092,43 @@ const deleteProduct = async (product) => {
         </div>
 
         <form @submit.prevent="saveProduct" class="modal-body">
+          <!-- Código de barras: escaneado, escrito o por pistola -->
+          <div class="form-group">
+            <label>Código de barras</label>
+            <div class="barcode-input-row">
+              <input
+                ref="barcodeInput"
+                v-model.trim="barcode"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                :readonly="!!editingProduct"
+                placeholder="Escanea o escribe el código y presiona Enter"
+                @keydown.enter.prevent="lookupFromForm"
+              />
+              <button
+                v-if="!editingProduct"
+                type="button"
+                class="btn-scan-inline"
+                title="Escanear con la cámara"
+                @click="startScanner"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M3 7V5a2 2 0 0 1 2-2h2"></path>
+                  <path d="M17 3h2a2 2 0 0 1 2 2v2"></path>
+                  <path d="M21 17v2a2 2 0 0 1-2 2h-2"></path>
+                  <path d="M7 21H5a2 2 0 0 1-2-2v-2"></path>
+                  <line x1="7" y1="8" x2="7" y2="16"></line>
+                  <line x1="11" y1="8" x2="11" y2="16"></line>
+                  <line x1="15" y1="8" x2="15" y2="16"></line>
+                </svg>
+              </button>
+            </div>
+            <small v-if="lookupLoading" class="hint">Buscando producto...</small>
+            <small v-else-if="catalogNote" class="hint">{{ catalogNote }}</small>
+            <small v-else-if="!editingProduct" class="hint">Si lo dejas vacío, se genera un código interno.</small>
+          </div>
+
           <div class="form-group">
             <label>Nombre del producto</label>
             <input v-model="name" type="text" placeholder="Ej: Coca Cola 500ml" required />
@@ -628,7 +1137,7 @@ const deleteProduct = async (product) => {
           <div class="form-row">
             <div class="form-group">
               <label>Precio base</label>
-              <input v-model="price" type="number" step="0.01" placeholder="0.00" required />
+              <input ref="priceInput" v-model="price" type="number" step="0.01" placeholder="0.00" required />
             </div>
             <div class="form-group">
               <label>Precio venta</label>
@@ -671,15 +1180,59 @@ const deleteProduct = async (product) => {
             <img v-if="imagePreview" :src="imagePreview" class="image-preview" />
           </div>
 
+          <label v-if="!editingProduct" class="keep-scanning">
+            <input type="checkbox" v-model="keepScanning" />
+            <span>Seguir escaneando al guardar</span>
+          </label>
+
           <div class="modal-actions">
             <button type="submit" class="btn-confirm">
               {{ editingProduct ? 'Actualizar' : 'Guardar' }}
             </button>
-            <button type="button" @click="showModal = false; editingProduct = null; imageFile = null" class="btn-cancel-modal">
+            <button type="button" @click="closeModal" class="btn-cancel-modal">
               Cancelar
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Escáner por cámara -->
+    <div v-if="showScanner" class="scanner-overlay">
+      <div class="scanner-top">
+        <span>Apunta al código de barras</span>
+        <button type="button" class="scanner-close" @click="stopScanner" title="Cerrar">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="scanner-video-wrap">
+        <video ref="videoEl" muted playsinline></video>
+        <div class="scan-frame">
+          <div class="scan-line"></div>
+        </div>
+        <p v-if="scannerError" class="scanner-error">{{ scannerError }}</p>
+      </div>
+
+      <div class="scanner-bottom">
+        <div v-if="zoomSupported" class="zoom-control">
+          <span>Zoom</span>
+          <input
+            type="range"
+            v-model="zoomValue"
+            :min="zoomMin"
+            :max="zoomMax"
+            :step="zoomStep"
+            @input="onZoomInput"
+          />
+        </div>
+        <button v-if="torchSupported" type="button" class="torch-btn" :class="{ on: torchOn }" @click="toggleTorch">
+          {{ torchOn ? 'Apagar linterna' : 'Linterna' }}
+        </button>
+        <p class="scanner-tip">Mantén el código dentro del recuadro, con buena luz. Se registra solo al leerlo.</p>
       </div>
     </div>
   </div>
@@ -723,6 +1276,7 @@ const deleteProduct = async (product) => {
 .header-actions {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .btn-add {
@@ -742,6 +1296,26 @@ const deleteProduct = async (product) => {
 
 .btn-add:hover {
   background: #1fa2c1;
+  transform: translateY(-1px);
+}
+
+.btn-scan {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1fa2c1;
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-scan:hover {
+  background: #0b3c5d;
   transform: translateY(-1px);
 }
 
@@ -1191,10 +1765,57 @@ const deleteProduct = async (product) => {
   box-shadow: 0 0 0 3px rgba(11, 60, 93, 0.1);
 }
 
+.form-group input[readonly] {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+}
+
+.barcode-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-scan-inline {
+  flex-shrink: 0;
+  width: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1fa2c1;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-scan-inline:hover {
+  background: #0b3c5d;
+}
+
+.hint {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.keep-scanning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #334155;
+  cursor: pointer;
+}
+
+.keep-scanning input {
+  width: 18px;
+  height: 18px;
 }
 
 .file-upload {
@@ -1289,6 +1910,142 @@ const deleteProduct = async (product) => {
   font-size: 16px;
   font-weight: 500;
   margin: 0;
+}
+
+/* =========================
+   ESCÁNER
+========================= */
+.scanner-overlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+}
+
+.scanner-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.scanner-close {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  border: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.scanner-video-wrap {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.scanner-video-wrap video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.scan-frame {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 85%;
+  max-width: 520px;
+  aspect-ratio: 2 / 1;
+  transform: translate(-50%, -50%);
+  border: 3px solid rgba(31, 162, 193, 0.95);
+  border-radius: 16px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.scan-line {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: 2px;
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+  animation: scan-move 1.6s ease-in-out infinite;
+}
+
+@keyframes scan-move {
+  0% { top: 10%; }
+  50% { top: 90%; }
+  100% { top: 10%; }
+}
+
+.scanner-error {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(220, 38, 38, 0.92);
+  color: white;
+  padding: 14px;
+  border-radius: 12px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.scanner-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  background: rgba(0, 0, 0, 0.75);
+  color: white;
+}
+
+.zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.zoom-control input[type="range"] {
+  flex: 1;
+}
+
+.torch-btn {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.torch-btn.on {
+  background: #facc15;
+  color: #000;
+}
+
+.scanner-tip {
+  margin: 0;
+  font-size: 12px;
+  color: #cbd5e1;
+  text-align: center;
 }
 
 /* =========================
