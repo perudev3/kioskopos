@@ -469,8 +469,10 @@ const lookupFromForm = async () => {
     catalogNote.value = 'Datos cargados del catálogo. Completa precio base, precio de venta y stock.';
     await nextTick();
     priceInput.value?.focus();
+  } else if (data?.lookup_failed) {
+    catalogNote.value = 'No se pudo consultar el catálogo ahora (error de conexión). Intenta de nuevo o ingresa los datos manualmente.';
   } else if (data) {
-    catalogNote.value = 'Código no encontrado en el catálogo. Ingresa el nombre y los precios.';
+    catalogNote.value = 'Código no encontrado en ningún catálogo. Ingresa el nombre y los precios; quedará guardado para próximos escaneos.';
   }
 };
 
