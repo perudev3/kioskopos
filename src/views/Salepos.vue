@@ -995,19 +995,27 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 .products-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-auto-rows: max-content;   /* FIX: evita que las filas se colapsen a 0 */
+  align-content: start;          /* FIX: las filas no se estiran ni se encogen */
   gap: 20px;
   padding: 24px;
   overflow-y: auto;
+  flex: 1 1 auto;                /* FIX: ocupa el espacio disponible del modal */
+  min-height: 0;                 /* FIX: permite el scroll interno dentro del flex */
   max-height: calc(90vh - 260px);
+  -webkit-overflow-scrolling: touch;
 }
 
 .product-card {
+  display: flex;                 /* FIX: estructura vertical estable */
+  flex-direction: column;
   background: white;
   border: 2px solid #e2e8f0;
   border-radius: 16px;
   overflow: hidden;
   cursor: pointer;
   transition: all 0.3s ease;
+  min-width: 0;
 }
 
 .product-card:hover {
@@ -1020,11 +1028,13 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   position: relative;
   width: 100%;
   height: 160px;
+  flex-shrink: 0;                /* FIX: la imagen nunca se encoge */
   background: #f8fafc;
   overflow: hidden;
 }
 
 .product-image img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -1064,6 +1074,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 
 .product-info {
   padding: 16px;
+  flex: 1 1 auto;
 }
 
 .product-info h4 {
@@ -1098,6 +1109,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 
 .btn-add-product {
   width: 100%;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1130,13 +1142,17 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   gap: 12px;
   padding: 24px;
   overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
   max-height: calc(90vh - 260px);
+  -webkit-overflow-scrolling: touch;
 }
 
 .product-row {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-shrink: 0;                /* FIX: las filas no se aplastan */
   background: white;
   border: 2px solid #e2e8f0;
   padding: 16px;
@@ -1161,6 +1177,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 }
 
 .row-image img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -1183,6 +1200,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 
 .row-content {
   flex: 1;
+  min-width: 0;
 }
 
 .row-content h4 {
@@ -1251,6 +1269,40 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   font-size: 16px;
   font-weight: 500;
   margin: 0;
+}
+
+/* Responsive móvil: 2 columnas y tarjetas más compactas */
+@media (max-width: 640px) {
+  .products-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 16px;
+  }
+
+  .product-image {
+    height: 120px;
+  }
+
+  .product-info {
+    padding: 12px;
+  }
+
+  .product-info h4 {
+    font-size: 14px;
+  }
+
+  .price {
+    font-size: 17px;
+  }
+
+  .btn-add-product {
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  .products-list {
+    padding: 16px;
+  }
 }
 
 /* Modal Selector de Peso */

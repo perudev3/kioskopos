@@ -24,8 +24,8 @@
             Abierto ahora
           </div>
 
-          <!-- ── Botón Compartir Catálogo ── -->
-          <button class="share-catalog-btn" @click="shareCatalog" title="Compartir catálogo">
+          <!-- ── Botón Compartir Catálogo (solo visible para el dueño de la tienda) ── -->
+          <button v-if="isOwner" class="share-catalog-btn" @click="shareCatalog" title="Compartir catálogo">
             <span>🔗</span> Compartir Catálogo
           </button>
         </div>
@@ -138,6 +138,17 @@ const addedIds = ref([]);
 const storeName = ref('Mi Kiosco');
 const storeTagline = ref('Todo lo que necesitas');
 const activeFilter = ref('all');
+
+// solo el dueño de la tienda (usuario logueado) ve el botón de compartir
+const isOwner = computed(() => {
+  try {
+    const token = localStorage.getItem('kiopos_token');
+    const user = JSON.parse(localStorage.getItem('kiopos_user') || 'null');
+    return !!token && !!user && String(user.id) === String(route.params.storeId);
+  } catch (e) {
+    return false;
+  }
+});
 
 // stock
 const stockStatus = (p) => {
@@ -323,17 +334,50 @@ onMounted(async () => {
 .rainbow-stripe span:nth-child(4){flex:1;background:var(--yellow);}
 .rainbow-stripe span:nth-child(5){flex:1;background:var(--red);}
 
-/* search */
-.search-wrap { margin-left:auto; position:relative; flex-shrink:0; }
-.search-input {
-  background:var(--bg2); border:1px solid var(--border);
-  color:var(--text); font-size:.82rem;
-  padding:.43em 1em .43em 2.1em; border-radius:999px;
-  outline:none; width:190px; transition:border-color .2s,width .3s;
+/* search — barra destacada a todo el ancho */
+.search-wrap {
+  flex: 1 1 100%;
+  width: 100%;
+  margin-left: 0;
+  margin-top: .3rem;
+  position: relative;
 }
-.search-input:focus { border-color:var(--sky); width:230px; }
-.search-input::placeholder { color:var(--muted); }
-.search-icon { position:absolute;left:.65em;top:50%;transform:translateY(-50%);color:var(--muted);pointer-events:none;font-size:.82rem; }
+.search-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  height: 56px;
+  padding: 0 1.3rem 0 3.4rem;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--navy);
+  background: #ffffff;
+  border: 2px solid var(--sky);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(41,182,232,.2);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color .2s, box-shadow .2s, transform .2s;
+}
+.search-input:hover { box-shadow: 0 10px 28px rgba(41,182,232,.28); }
+.search-input:focus {
+  border-color: var(--sky2);
+  box-shadow: 0 0 0 5px rgba(41,182,232,.22), 0 10px 28px rgba(41,182,232,.28);
+  transform: translateY(-1px);
+}
+.search-input::placeholder { color: var(--muted); font-weight: 500; }
+.search-icon {
+  position: absolute;
+  left: 1.15rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-style: normal;
+  font-size: 1.3rem;
+  line-height: 1;
+  pointer-events: none;
+}
 
 /* ── CATALOG ── */
 .catalog-section {
