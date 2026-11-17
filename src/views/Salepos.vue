@@ -3,7 +3,14 @@ import html2canvas from 'html2canvas'
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import api from '../lib/axios'
 import Swal from 'sweetalert2'
-import Quagga from 'quagga'
+import {
+  MultiFormatReader,
+  BinaryBitmap,
+  HybridBinarizer,
+  HTMLCanvasElementLuminanceSource,
+  DecodeHintType,
+  BarcodeFormat
+} from '@zxing/library'
 
 import Cart from '../components/Cart.vue'
 import PaymentModal from '../components/PaymentModal.vue'
@@ -106,67 +113,292 @@ const updateQuantity = (id, newQty) => {
 }
 
 /* =========================
-   SCANNER CÁMARA
+   SCANNER CÁMARA (OPTIMIZADO)
+   - Detector nativo del navegador (rápido y preciso) con ZXing de respaldo
+   - Cámara en alta resolución, enfoque continuo y zoom automático
+   - Valida checksum y exige lecturas repetidas (sin falsos positivos)
 ========================= */
 const showScanner = ref(false)
 let scanning = false
 
+// Controles de cámara (zoom / linterna)
+const torchSupported = ref(false)
+const torchOn = ref(false)
+const zoomSupported = ref(false)
+const zoomMin = ref(1)
+const zoomMax = ref(1)
+const zoomStep = ref(0.1)
+const zoomValue = ref(1)
+
+const NATIVE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'code_128']
+const CONFIRM_READS = 2      // lecturas iguales seguidas para aceptar el código
+const READ_WINDOW_MS = 1200  // tiempo máximo entre esas lecturas
+
+let stream = null
+let videoEl = null
+let scanTimer = null
+let detector = null
+let zxingReader = null
+let candidate = null
+let candidateCount = 0
+let candidateAt = 0
+let lastMissCode = null
+let lastMissAt = 0
+const decodeCanvas = document.createElement('canvas')
+
+// Compara códigos numéricos ignorando ceros a la izquierda (UPC-A 12 dígitos vs EAN-13)
+const normalizeCode = (code) => {
+  const clean = String(code || '').trim().toUpperCase().replace(/\s/g, '')
+  return /^\d+$/.test(clean) ? clean.replace(/^0+/, '') : clean
+}
+
+const isValidGtin = (code) => {
+  if (!/^(\d{8}|\d{12,14})$/.test(code)) return false
+  const digits = code.split('').map(Number)
+  const check = digits.pop()
+  let sum = 0
+  digits.reverse().forEach((d, i) => {
+    sum += d * (i % 2 === 0 ? 3 : 1)
+  })
+  return (10 - (sum % 10)) % 10 === check
+}
+
 const startScanner = async () => {
   showScanner.value = true
+  torchOn.value = false
+  candidate = null
+  candidateCount = 0
   await nextTick()
+
   const target = document.querySelector('#scanner')
   if (!target) {
     Swal.fire('Error', 'No se pudo iniciar la cámara', 'error')
     return
   }
 
-  Quagga.init({
-    inputStream: {
-      name: 'Live',
-      type: 'LiveStream',
-      target,
-      constraints: { facingMode: 'environment' }
-    },
-    locator: {
-      patchSize: 'medium',
-      halfSample: true
-    },
-    numOfWorkers: navigator.hardwareConcurrency || 4,
-    frequency: 10,
-    decoder: {
-      readers: ['code_128_reader', 'ean_reader'],
-      multiple: false
-    },
-    locate: true
-  }, (err) => {
-    if (err) {
-      console.error(err)
-      Swal.fire('Error', 'No se pudo abrir la cámara', 'error')
+  if (!navigator.mediaDevices?.getUserMedia) {
+    Swal.fire('Error', 'Tu navegador no permite usar la cámara (se requiere HTTPS)', 'error')
+    stopScanner()
+    return
+  }
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30 }
+      }
+    })
+
+    // Si el usuario cerró el escáner mientras se pedía el permiso
+    if (!showScanner.value) {
+      stream.getTracks().forEach(t => t.stop())
+      stream = null
       return
     }
-    Quagga.start()
-    scanning = true
-  })
 
-  Quagga.offDetected()
-  Quagga.onDetected(onDetected)
+    videoEl = document.createElement('video')
+    videoEl.setAttribute('playsinline', 'true')
+    videoEl.muted = true
+    videoEl.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;'
+    target.appendChild(videoEl)
+    videoEl.srcObject = stream
+    await videoEl.play()
+
+    await setupTrackCapabilities()
+
+    scanning = true
+
+    // 1) Detector nativo (Chrome/Android): el más rápido y preciso
+    if ('BarcodeDetector' in window) {
+      try {
+        const supported = await window.BarcodeDetector.getSupportedFormats()
+        const formats = NATIVE_FORMATS.filter(f => supported.includes(f))
+        if (formats.length) {
+          detector = new window.BarcodeDetector({ formats })
+          loopNative()
+          return
+        }
+      } catch (e) {
+        /* se usa ZXing */
+      }
+    }
+
+    // 2) Respaldo ZXing (iOS/Safari, Firefox, etc.)
+    const hints = new Map()
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.EAN_13,
+      BarcodeFormat.EAN_8,
+      BarcodeFormat.UPC_A,
+      BarcodeFormat.CODE_128
+    ])
+    hints.set(DecodeHintType.TRY_HARDER, true)
+    zxingReader = new MultiFormatReader()
+    zxingReader.setHints(hints)
+    loopZxing()
+  } catch (err) {
+    console.error(err)
+    Swal.fire(
+      'Error',
+      err?.name === 'NotAllowedError'
+        ? 'Permiso de cámara denegado. Actívalo en el navegador.'
+        : 'No se pudo abrir la cámara',
+      'error'
+    )
+    stopScanner()
+  }
+}
+
+// Enfoque continuo + zoom inicial: evita tener que acercar/alejar tanto el celular
+const setupTrackCapabilities = async () => {
+  const track = stream?.getVideoTracks()[0]
+  if (!track) return
+
+  const caps = track.getCapabilities ? track.getCapabilities() : {}
+
+  const advanced = []
+  if (caps.focusMode?.includes('continuous')) advanced.push({ focusMode: 'continuous' })
+  if (caps.exposureMode?.includes('continuous')) advanced.push({ exposureMode: 'continuous' })
+  if (advanced.length) {
+    await track.applyConstraints({ advanced }).catch(() => {})
+  }
+
+  torchSupported.value = !!caps.torch
+
+  if (caps.zoom) {
+    zoomSupported.value = true
+    zoomMin.value = caps.zoom.min
+    zoomMax.value = caps.zoom.max
+    zoomStep.value = caps.zoom.step || 0.1
+    const initial = Math.min(Math.max(2, caps.zoom.min), caps.zoom.max)
+    zoomValue.value = initial
+    await track.applyConstraints({ advanced: [{ zoom: initial }] }).catch(() => {})
+  } else {
+    zoomSupported.value = false
+  }
+}
+
+const onZoomInput = async () => {
+  const track = stream?.getVideoTracks()[0]
+  if (!track) return
+  await track.applyConstraints({ advanced: [{ zoom: Number(zoomValue.value) }] }).catch(() => {})
+}
+
+const toggleTorch = async () => {
+  const track = stream?.getVideoTracks()[0]
+  if (!track) return
+  torchOn.value = !torchOn.value
+  await track.applyConstraints({ advanced: [{ torch: torchOn.value }] }).catch(() => {
+    torchOn.value = false
+  })
+}
+
+const loopNative = async () => {
+  if (!scanning) return
+
+  try {
+    if (videoEl && videoEl.readyState >= 2) {
+      const codes = await detector.detect(videoEl)
+      if (codes.length) handleRead(codes[0].rawValue)
+    }
+  } catch (e) {
+    /* frame sin código */
+  }
+
+  if (scanning) scanTimer = setTimeout(loopNative, 80)
+}
+
+const loopZxing = () => {
+  if (!scanning) return
+
+  if (videoEl && videoEl.readyState >= 2 && videoEl.videoWidth) {
+    const vw = videoEl.videoWidth
+    const vh = videoEl.videoHeight
+    // Región central: menos ruido y decodificación más rápida
+    const cw = Math.round(vw * 0.9)
+    const ch = Math.round(vh * 0.5)
+    const sx = Math.round((vw - cw) / 2)
+    const sy = Math.round((vh - ch) / 2)
+    const scale = Math.min(1, 1280 / cw)
+
+    decodeCanvas.width = Math.round(cw * scale)
+    decodeCanvas.height = Math.round(ch * scale)
+    const ctx = decodeCanvas.getContext('2d', { willReadFrequently: true })
+    ctx.drawImage(videoEl, sx, sy, cw, ch, 0, 0, decodeCanvas.width, decodeCanvas.height)
+
+    try {
+      const bitmap = new BinaryBitmap(new HybridBinarizer(new HTMLCanvasElementLuminanceSource(decodeCanvas)))
+      const result = zxingReader.decode(bitmap)
+      handleRead(result.getText())
+    } catch (e) {
+      /* frame sin código */
+    }
+  }
+
+  if (scanning) scanTimer = setTimeout(loopZxing, 90)
+}
+
+// Valida y confirma la lectura antes de llamar a onDetected
+const handleRead = (raw) => {
+  const code = String(raw || '').trim()
+  if (!code) return
+
+  if (/^\d+$/.test(code)) {
+    if (!isValidGtin(code)) return
+  } else if (code.length < 4) {
+    return
+  }
+
+  const now = Date.now()
+  if (code === candidate && now - candidateAt <= READ_WINDOW_MS) {
+    candidateCount += 1
+  } else {
+    candidate = code
+    candidateCount = 1
+  }
+  candidateAt = now
+
+  if (candidateCount >= CONFIRM_READS) {
+    candidateCount = 0
+    onDetected({ codeResult: { code } })
+  }
 }
 
 const stopScanner = () => {
-  if (scanning) Quagga.stop()
   scanning = false
+  if (scanTimer) clearTimeout(scanTimer)
+  scanTimer = null
+  candidate = null
+  candidateCount = 0
+
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop())
+    stream = null
+  }
+  if (videoEl) {
+    videoEl.srcObject = null
+    videoEl.remove()
+    videoEl = null
+  }
+
+  detector = null
+  zxingReader = null
   showScanner.value = false
 }
 
 const onDetected = (data) => {
   if (!data || !data.codeResult) return
-  let scannedCode = data.codeResult.code.trim().toUpperCase().replace(/\s/g, '')
+  const scannedCode = normalizeCode(data.codeResult.code)
 
   const product = products.value.find(p =>
-    p.barcode?.trim().toUpperCase().replace(/\s/g, '') === scannedCode
+    normalizeCode(p.barcode) === scannedCode
   )
 
   if (product) {
+    if (navigator.vibrate) navigator.vibrate(80)
     addToCart(product)
     stopScanner()
     Swal.fire({ 
@@ -176,6 +408,22 @@ const onDetected = (data) => {
       title: `${product.name} agregado`, 
       showConfirmButton: false, 
       timer: 1500 
+    })
+    return
+  }
+
+  // Código leído pero no registrado: avisa (sin repetir el aviso a cada lectura)
+  const now = Date.now()
+  if (scannedCode !== lastMissCode || now - lastMissAt > 3000) {
+    lastMissCode = scannedCode
+    lastMissAt = now
+    Swal.fire({
+      toast: true,
+      position: 'top-end',
+      icon: 'warning',
+      title: 'Producto no registrado',
+      showConfirmButton: false,
+      timer: 1800
     })
   }
 }
@@ -395,7 +643,26 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
           </button>
         </div>
 
-        <div id="scanner" class="scanner-view"></div>
+        <div id="scanner" class="scanner-view">
+          <div class="scan-guide"><div class="scan-line"></div></div>
+        </div>
+
+        <div v-if="zoomSupported || torchSupported" class="scanner-controls">
+          <div v-if="zoomSupported" class="zoom-control">
+            <span>Zoom</span>
+            <input
+              type="range"
+              v-model="zoomValue"
+              :min="zoomMin"
+              :max="zoomMax"
+              :step="zoomStep"
+              @input="onZoomInput"
+            />
+          </div>
+          <button v-if="torchSupported" type="button" class="torch-btn" :class="{ on: torchOn }" @click="toggleTorch">
+            {{ torchOn ? 'Apagar linterna' : 'Linterna' }}
+          </button>
+        </div>
 
         <div class="scanner-actions">
           <button class="btn-secondary-action" @click="openProductFallback">
@@ -819,6 +1086,77 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   width: 100% !important;
   height: 100% !important;
   object-fit: cover;
+}
+
+/* Recuadro guía y línea de escaneo */
+.scan-guide {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 85%;
+  aspect-ratio: 2 / 1;
+  transform: translate(-50%, -50%);
+  border: 3px solid rgba(31, 162, 193, 0.95);
+  border-radius: 14px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.scan-line {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  height: 2px;
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+  animation: scan-move 1.6s ease-in-out infinite;
+}
+
+@keyframes scan-move {
+  0% { top: 10%; }
+  50% { top: 90%; }
+  100% { top: 10%; }
+}
+
+/* Controles zoom / linterna */
+.scanner-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px 0;
+  flex-wrap: wrap;
+}
+
+.zoom-control {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.zoom-control input[type="range"] {
+  flex: 1;
+}
+
+.torch-btn {
+  background: #f1f5f9;
+  color: #0f172a;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.torch-btn.on {
+  background: #facc15;
+  color: #000;
 }
 
 .scanner-actions {
