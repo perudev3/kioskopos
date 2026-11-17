@@ -280,6 +280,7 @@ const sale_price = ref('');
 const stock = ref('');
 const unit_type = ref('UNIT');
 const barcode = ref('');
+const originalBarcode = ref(''); // código que tenía el producto al abrir la edición
 const file = ref(null);
 const imageFile = ref(null);
 const remoteImageUrl = ref(null); // imagen que vino del catálogo
@@ -302,6 +303,10 @@ watch(imageFile, (f) => {
   objectUrl.value = f ? URL.createObjectURL(f) : null;
 });
 
+const barcodeChanged = computed(
+  () => !!editingProduct.value && barcode.value.trim() !== '' && barcode.value.trim() !== originalBarcode.value
+);
+
 const imagePreview = computed(() => {
   if (objectUrl.value) return objectUrl.value;
   if (remoteImageUrl.value) return remoteImageUrl.value;
@@ -322,6 +327,7 @@ const resetForm = () => {
   stock.value = '';
   unit_type.value = 'UNIT';
   barcode.value = '';
+  originalBarcode.value = '';
   imageFile.value = null;
   file.value = null;
   remoteImageUrl.value = null;
@@ -360,7 +366,8 @@ const saveProduct = async () => {
     formData.append('image_url', remoteImageUrl.value);
   }
 
-  if (!isEditing && barcode.value) {
+  // Nuevo: siempre que haya código. Edición: solo si se cambió por uno nuevo.
+  if (barcode.value && (!isEditing || barcode.value.trim() !== originalBarcode.value)) {
     formData.append('barcode', barcode.value.trim());
   }
 
@@ -419,6 +426,23 @@ const lookupFromForm = async () => {
 
   const data = await fetchLookup(code);
 
+  // Modo edición: solo se valida que el código nuevo no pertenezca a otro producto
+  if (editingProduct.value) {
+    if (data?.exists && data.product.id !== editingProduct.value.id) {
+      await Swal.fire({
+        title: 'Código ya en uso',
+        text: `Ese código pertenece a "${data.product.name}".`,
+        icon: 'warning',
+      });
+      barcode.value = originalBarcode.value;
+      catalogNote.value = '';
+    } else if (data) {
+      catalogNote.value =
+        code !== originalBarcode.value ? 'Código nuevo disponible. Se actualizará al guardar.' : '';
+    }
+    return;
+  }
+
   if (data?.exists) {
     const r = await Swal.fire({
       title: 'Producto ya registrado',
@@ -452,8 +476,8 @@ const lookupFromForm = async () => {
 
 // Punto de entrada único: cámara, pistola USB/Bluetooth o campo manual
 const handleScannedCode = async (code) => {
-  const formOpenForNew = showModal.value && !editingProduct.value;
-  if (!formOpenForNew) await openNewProductModal();
+  // Si el modal ya está abierto (nuevo o edición) se usa; si no, se abre uno nuevo
+  if (!showModal.value) await openNewProductModal();
   barcode.value = String(code).trim();
   await lookupFromForm();
 };
@@ -781,6 +805,7 @@ const editProduct = (product) => {
   sale_price.value = product.sale_price;
   stock.value = product.stock;
   barcode.value = product.barcode || '';
+  originalBarcode.value = product.barcode || '';
   unit_type.value = product.unit_type || 'UNIT';
   showModal.value = true;
 };
@@ -1102,12 +1127,10 @@ const deleteProduct = async (product) => {
                 type="text"
                 inputmode="numeric"
                 autocomplete="off"
-                :readonly="!!editingProduct"
                 placeholder="Escanea o escribe el código y presiona Enter"
                 @keydown.enter.prevent="lookupFromForm"
               />
               <button
-                v-if="!editingProduct"
                 type="button"
                 class="btn-scan-inline"
                 title="Escanear con la cámara"
@@ -1127,6 +1150,8 @@ const deleteProduct = async (product) => {
             <small v-if="lookupLoading" class="hint">Buscando producto...</small>
             <small v-else-if="catalogNote" class="hint">{{ catalogNote }}</small>
             <small v-else-if="!editingProduct" class="hint">Si lo dejas vacío, se genera un código interno.</small>
+            <small v-else class="hint">Escanea el código nuevo para reemplazar el actual. Si lo dejas vacío, se mantiene el actual.</small>
+            <small v-if="barcodeChanged" class="hint warn">Al cambiar el código, las etiquetas impresas con el código anterior dejarán de servir.</small>
           </div>
 
           <div class="form-group">
@@ -1802,6 +1827,10 @@ const deleteProduct = async (product) => {
 .hint {
   font-size: 12px;
   color: #64748b;
+}
+
+.hint.warn {
+  color: #b45309;
 }
 
 .keep-scanning {
