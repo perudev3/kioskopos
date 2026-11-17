@@ -630,6 +630,8 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
       </div>
     </div>
 
+    <!-- Modales (Teleport: se dibujan sobre toda la app, por encima del menú/barra superior) -->
+    <Teleport to="body">
     <!-- Modal Scanner -->
     <div v-if="showScanner" class="modal-backdrop" @click.self="stopScanner">
       <div class="modal-scanner">
@@ -891,8 +893,16 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
       @confirm="saveSale($event)"
       @close="showPayment = false"
     />
+    </Teleport>
   </div>
 </template>
+
+<style>
+/* Las alertas de SweetAlert2 deben quedar por encima de los modales */
+.swal2-container {
+  z-index: 20000 !important;
+}
+</style>
 
 <style scoped>
 .pos-layout {
@@ -1017,8 +1027,9 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: 9000;
   padding: 20px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 /* Modal Scanner */
@@ -1049,10 +1060,11 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 .close-btn {
   width: 60px;
   height: 40px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f1f5f9;
+  background: #e2e8f0;
   border: none;
   border-radius: 10px;
   cursor: pointer;

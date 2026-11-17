@@ -387,7 +387,6 @@ const saveProduct = async () => {
 
     if (!isEditing && keepScanning.value) {
       toast('success', 'Producto registrado. Escanea el siguiente');
-      startScanner();
     } else {
       Swal.fire(
         'Éxito',
@@ -1105,16 +1104,14 @@ const deleteProduct = async (product) => {
       </div>
     </div>
 
-    <!-- Modal -->
+    <!-- Modal (Teleport: se dibuja sobre toda la app, por encima del menú/barra superior) -->
+    <Teleport to="body">
     <div v-if="showModal" class="modal-backdrop" @click.self="closeModal">
       <div class="modal">
         <div class="modal-header">
           <h3>{{ editingProduct ? 'Editar Producto' : 'Nuevo Producto' }}</h3>
-          <button @click="closeModal" class="close-btn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
+          <button type="button" @click="closeModal" class="close-btn" aria-label="Cerrar" title="Cerrar">
+            <span class="x-icon" aria-hidden="true"></span>
           </button>
         </div>
 
@@ -1223,16 +1220,15 @@ const deleteProduct = async (product) => {
         </form>
       </div>
     </div>
+    </Teleport>
 
     <!-- Escáner por cámara -->
+    <Teleport to="body">
     <div v-if="showScanner" class="scanner-overlay">
       <div class="scanner-top">
         <span>Apunta al código de barras</span>
-        <button type="button" class="scanner-close" @click="stopScanner" title="Cerrar">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+        <button type="button" class="scanner-close" @click="stopScanner" aria-label="Cerrar" title="Cerrar">
+          <span class="x-icon" aria-hidden="true"></span>
         </button>
       </div>
 
@@ -1260,10 +1256,19 @@ const deleteProduct = async (product) => {
           {{ torchOn ? 'Apagar linterna' : 'Linterna' }}
         </button>
         <p class="scanner-tip">Mantén el código dentro del recuadro, con buena luz. Se registra solo al leerlo.</p>
+        <button type="button" class="scanner-cancel" @click="stopScanner">Cerrar escáner</button>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
+
+<style>
+/* Las alertas de SweetAlert2 deben quedar por encima de los modales */
+.swal2-container {
+  z-index: 20000 !important;
+}
+</style>
 
 <style scoped>
 .page {
@@ -1697,8 +1702,9 @@ const deleteProduct = async (product) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 9000;
   padding: 20px;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
 .modal {
@@ -1731,10 +1737,10 @@ const deleteProduct = async (product) => {
 }
 
 .close-btn {
-  background: #f1f5f9;
+  background: #e2e8f0;
   border: none;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 10px;
   display: flex;
   align-items: center;
@@ -1950,16 +1956,19 @@ const deleteProduct = async (product) => {
   position: fixed;
   inset: 0;
   background: #000;
-  z-index: 1100;
+  z-index: 9500;
   display: flex;
   flex-direction: column;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
 .scanner-top {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 14px 16px;
+  position: relative;
+  z-index: 3;
+  padding: calc(14px + env(safe-area-inset-top)) 16px 14px;
   color: white;
   font-size: 15px;
   font-weight: 600;
@@ -2070,6 +2079,45 @@ const deleteProduct = async (product) => {
 .torch-btn.on {
   background: #facc15;
   color: #000;
+}
+
+/* Ícono "X" dibujado con CSS: se ve siempre, sin depender de estilos de SVG */
+.x-icon {
+  position: relative;
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
+.x-icon::before,
+.x-icon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.x-icon::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.x-icon::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.scanner-cancel {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .scanner-tip {
