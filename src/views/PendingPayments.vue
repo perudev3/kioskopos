@@ -15,8 +15,11 @@ const filteredSales = computed(() => {
   const term = search.value.toLowerCase()
 
   return sales.value.filter(sale => {
-    const customer =
-      sale.cliente_por_cobrar?.customer_name?.toLowerCase() || ''
+    const customer = (
+      sale.customer_name ||
+      sale.cliente_por_cobrar?.customer_name ||
+      ''
+    ).toLowerCase()
 
     const products = (sale.items || [])
       .map(item => item.product?.name?.toLowerCase() || '')
