@@ -45,7 +45,7 @@
         :value="formatMoney(totalVentas)"
         color="primary"
       />
-      
+
       <StatCard
         title="✨ Ganancia Neta"
         :value="formatMoney(gananciaNeta)"
@@ -148,7 +148,7 @@
           📦 Ir a Productos
         </button>
       </div>
-      
+
       <div class="critical-message">
         <span class="critical-icon">🚨</span>
         <p>Tienes <strong>{{ lowStockProducts.length }}</strong> producto(s) que necesitan reposición urgente</p>
@@ -161,16 +161,27 @@
               <th>Producto</th>
               <th>Stock Actual</th>
               <th>Estado</th>
-              <th>Acción</th>
+              <th>Reponer</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="p in lowStockProducts" :key="p.id">
-              <td>{{ p.name }}</td>
-              <td><span class="stock-badge" :class="getStockClass(p.stock)">{{ p.stock }}</span></td>
+              <td>
+                <div class="product-name">{{ p.name }}</div>
+                <span v-if="unitOf(p)" class="unit-tag">
+                  {{ unitOf(p) === 'WEIGHT' ? '⚖️ Por kilo' : '📦 Por unidad' }}
+                </span>
+              </td>
+              <td>
+                <span class="stock-badge" :class="getStockClass(p.stock)">
+                  {{ formatStock(p) }}
+                </span>
+              </td>
               <td><span class="status-badge danger">Crítico</span></td>
               <td>
-                <button class="restock-btn" @click="openRestock(p)">➕ Reponer</button>
+                <button class="restock-btn" @click="openRestock(p)">
+                  <span class="restock-plus">+</span> Actualizar stock
+                </button>
               </td>
             </tr>
           </tbody>
@@ -178,24 +189,99 @@
       </div>
     </div>
 
-    <!-- MODAL REPONER STOCK -->
+    <!-- MODAL ACTUALIZAR STOCK -->
     <div v-if="showRestock" class="restock-backdrop" @click.self="closeRestock">
       <form class="restock-modal" @submit.prevent="saveRestock">
-        <h3>Reponer stock</h3>
-        <p>
-          {{ restockProduct?.name }} (actual: <strong>{{ restockProduct?.stock }}</strong>)
-        </p>
-        <input
-          v-model="restockQty"
-          type="number"
-          min="0"
-          step="any"
-          placeholder="Cantidad a agregar"
-        />
+        <div class="restock-header">
+          <div>
+            <h3>Actualizar stock</h3>
+            <p class="restock-product">{{ restockProduct?.name }}</p>
+          </div>
+          <button type="button" class="restock-close" @click="closeRestock">✕</button>
+        </div>
+
+        <div class="restock-body">
+          <!-- Solo aparece si el producto no trae su tipo de unidad -->
+          <div v-if="!knownUnit" class="unit-picker">
+            <span>¿Cómo se vende este producto?</span>
+            <div class="seg">
+              <button type="button" :class="{ active: pickedUnit === 'UNIT' }" @click="pickedUnit = 'UNIT'">
+                📦 Por unidad
+              </button>
+              <button type="button" :class="{ active: pickedUnit === 'WEIGHT' }" @click="pickedUnit = 'WEIGHT'">
+                ⚖️ Por kilo
+              </button>
+            </div>
+          </div>
+
+          <div class="stock-now">
+            <span>Stock actual</span>
+            <strong>{{ formatStock(restockProduct, activeUnit) }}</strong>
+          </div>
+
+          <div class="seg">
+            <button type="button" :class="{ active: restockMode === 'add' }" @click="restockMode = 'add'">
+              ➕ Sumar al stock
+            </button>
+            <button type="button" :class="{ active: restockMode === 'set' }" @click="restockMode = 'set'">
+              ✏️ Establecer total
+            </button>
+          </div>
+
+          <label class="restock-field">
+            <span>
+              {{ restockMode === 'add' ? 'Cantidad que ingresa' : 'Nuevo stock total' }}
+              {{ isWeight ? '' : '(unidades)' }}
+            </span>
+            <div class="input-row">
+              <input
+                ref="restockInput"
+                v-model="restockQty"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="any"
+                placeholder="0"
+              />
+              <div v-if="isWeight" class="seg seg-mini">
+                <button type="button" :class="{ active: weightUnit === 'kg' }" @click="weightUnit = 'kg'">kg</button>
+                <button type="button" :class="{ active: weightUnit === 'g' }" @click="weightUnit = 'g'">g</button>
+              </div>
+            </div>
+          </label>
+
+          <!-- Atajos -->
+          <div v-if="restockMode === 'add'" class="chips">
+            <template v-if="isWeight">
+              <button type="button" @click="addQuick(0.25)">+250 g</button>
+              <button type="button" @click="addQuick(0.5)">+500 g</button>
+              <button type="button" @click="addQuick(1)">+1 kg</button>
+              <button type="button" @click="addQuick(5)">+5 kg</button>
+              <button type="button" @click="addQuick(10)">+10 kg</button>
+              <button type="button" @click="addQuick(25)">+25 kg</button>
+            </template>
+            <template v-else>
+              <button type="button" @click="addQuick(5)">+5</button>
+              <button type="button" @click="addQuick(10)">+10</button>
+              <button type="button" @click="addQuick(20)">+20</button>
+              <button type="button" @click="addQuick(50)">+50</button>
+            </template>
+          </div>
+
+          <div class="stock-after" :class="{ invalid: !restockValid }">
+            <span>Quedará con</span>
+            <strong>{{ restockValid ? formatStock(restockProduct, activeUnit, newStock) : '—' }}</strong>
+          </div>
+
+          <p v-if="isWeight" class="hint">
+            Para productos por kilo, el stock se guarda en kilos y baja con cada venta según los gramos vendidos.
+          </p>
+        </div>
+
         <div class="restock-actions">
-          <button type="button" @click="closeRestock">Cancelar</button>
-          <button type="submit" :disabled="restockSaving">
-            {{ restockSaving ? 'Guardando...' : 'Actualizar' }}
+          <button type="button" class="btn-cancel" @click="closeRestock">Cancelar</button>
+          <button type="submit" class="btn-save" :disabled="!restockValid || restockSaving">
+            {{ restockSaving ? 'Guardando...' : '✓ Guardar stock' }}
           </button>
         </div>
       </form>
@@ -204,7 +290,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import StatCard from '../components/StatCard.vue';
 import api from '../lib/axios';
 import { Chart, registerables } from 'chart.js';
@@ -326,33 +412,105 @@ const goToProducts = () => {
 };
 
 /* =========================
-   REPOSICIÓN RÁPIDA DE STOCK
-   (ajusta la ruta si tu API de productos es distinta)
+   ACTUALIZAR STOCK (unidad y kilos)
+   - Productos por unidad: el stock son unidades.
+   - Productos por kilo: el stock se guarda en KILOS (decimal),
+     igual que lo descuenta el POS al vender por gramos.
+   Ajusta la ruta si tu API de productos es distinta.
 ========================= */
 const showRestock = ref(false);
 const restockProduct = ref(null);
+const restockMode = ref('add'); // 'add' = sumar | 'set' = establecer total
 const restockQty = ref('');
 const restockSaving = ref(false);
+const restockInput = ref(null);
+const weightUnit = ref('kg'); // 'kg' | 'g' (solo productos por kilo)
+const pickedUnit = ref('UNIT'); // solo si el producto no trae unit_type
 
-const openRestock = (p) => {
+const round3 = (n) => Math.round(n * 1000) / 1000;
+
+// Tipo de unidad que trae el producto desde la API ('' si no viene)
+const unitOf = (p) => {
+  const t = String(p?.unit_type || '').toUpperCase();
+  return t === 'WEIGHT' || t === 'UNIT' ? t : '';
+};
+
+const knownUnit = computed(() => unitOf(restockProduct.value));
+const activeUnit = computed(() => knownUnit.value || pickedUnit.value);
+const isWeight = computed(() => activeUnit.value === 'WEIGHT');
+
+// Muestra el stock con su unidad (kg / und)
+const formatStock = (p, unit, value) => {
+  if (!p) return '';
+  const raw = value !== undefined ? value : p.stock;
+  const n = round3(Number(raw || 0));
+  const u = unit || unitOf(p);
+  if (u === 'WEIGHT') return `${n} kg`;
+  if (u === 'UNIT') return `${n} und`;
+  return `${n}`;
+};
+
+// Cantidad ingresada convertida a la unidad de stock (kilos o unidades)
+const qtyInStockUnit = computed(() => {
+  const v = Number(restockQty.value);
+  if (isNaN(v)) return 0;
+  return isWeight.value && weightUnit.value === 'g' ? v / 1000 : v;
+});
+
+const newStock = computed(() => {
+  const current = Number(restockProduct.value?.stock || 0);
+  return restockMode.value === 'add'
+    ? round3(current + qtyInStockUnit.value)
+    : round3(qtyInStockUnit.value);
+});
+
+const restockValid = computed(() => {
+  if (restockQty.value === '' || restockQty.value === null) return false;
+  const v = Number(restockQty.value);
+  if (isNaN(v)) return false;
+  return restockMode.value === 'add' ? v > 0 : v >= 0;
+});
+
+const openRestock = async (p) => {
   restockProduct.value = p;
+  restockMode.value = 'add';
   restockQty.value = '';
+  weightUnit.value = 'kg';
+  pickedUnit.value = 'UNIT';
   showRestock.value = true;
+  await nextTick();
+  if (restockInput.value) restockInput.value.focus();
 };
 
 const closeRestock = () => {
+  if (restockSaving.value) return;
   showRestock.value = false;
+  restockProduct.value = null;
 };
 
+// Los atajos siempre suman en la unidad del producto (kg o unidades)
+const addQuick = (n) => {
+  const base = Number(restockQty.value || 0);
+  const add = isWeight.value && weightUnit.value === 'g' ? n * 1000 : n;
+  restockQty.value = round3(base + add);
+};
+
+// Al cambiar modo, unidad o tipo se limpia la cantidad para evitar errores
+watch([restockMode, weightUnit, pickedUnit], () => {
+  restockQty.value = '';
+});
+
 const saveRestock = async () => {
-  const qty = Number(restockQty.value);
-  if (!qty || qty <= 0) return;
+  if (!restockValid.value || restockSaving.value || !restockProduct.value) return;
+
+  const product = restockProduct.value;
+  const stockToSave = newStock.value;
 
   restockSaving.value = true;
   try {
-    const nuevo = Number(restockProduct.value.stock) + qty;
-    await api.put(`/products/${restockProduct.value.id}`, { stock: nuevo });
+    await api.put(`/products/${product.id}`, { stock: stockToSave });
     showRestock.value = false;
+    restockProduct.value = null;
     await loadDashboard();
   } catch (e) {
     console.error(e);
@@ -366,6 +524,10 @@ const saveRestock = async () => {
    CHARTS
 ========================= */
 const initCharts = () => {
+  const salesCanvas = document.getElementById('salesChart');
+  const profitCanvas = document.getElementById('profitChart');
+  if (!salesCanvas || !profitCanvas) return;
+
   const labels = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
@@ -375,7 +537,7 @@ const initCharts = () => {
   if (salesChart) salesChart.destroy();
   if (profitChart) profitChart.destroy();
 
-  salesChart = new Chart(document.getElementById('salesChart'), {
+  salesChart = new Chart(salesCanvas, {
     type: 'line',
     data: {
       labels,
@@ -398,7 +560,7 @@ const initCharts = () => {
     }
   });
 
-  profitChart = new Chart(document.getElementById('profitChart'), {
+  profitChart = new Chart(profitCanvas, {
     type: 'bar',
     data: {
       labels,
@@ -427,8 +589,9 @@ const formatMoney = (value) => {
 };
 
 const getStockClass = (stock) => {
-  if (stock === 0) return 'critical';
-  if (stock <= 3) return 'low';
+  const s = Number(stock);
+  if (s === 0) return 'critical';
+  if (s <= 3) return 'low';
   return 'medium';
 };
 
@@ -706,6 +869,7 @@ onMounted(loadDashboard);
   border-radius: 6px;
   font-weight: 600;
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .stock-badge.critical {
@@ -733,6 +897,22 @@ onMounted(loadDashboard);
 .status-badge.danger {
   background: #fee2e2;
   color: #991b1b;
+}
+
+.product-name {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.unit-tag {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 999px;
 }
 
 /* =========================
@@ -958,92 +1138,333 @@ onMounted(loadDashboard);
 }
 
 /* =========================
-   REPONER STOCK (nuevo)
+   BOTÓN ACTUALIZAR STOCK
 ========================= */
 .restock-btn {
-  background: #0b3c5d;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #16a34a, #22c55e);
   color: #fff;
   border: none;
-  padding: 8px 14px;
-  border-radius: 8px;
-  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.35);
+  transition: all 0.2s ease;
 }
 
 .restock-btn:hover {
-  background: #1e5a7d;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(34, 197, 94, 0.45);
 }
 
+.restock-btn:active {
+  transform: translateY(0);
+}
+
+.restock-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* =========================
+   MODAL ACTUALIZAR STOCK
+========================= */
 .restock-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9000;
-  padding: 20px;
+  padding: 16px;
 }
 
 .restock-modal {
   background: #fff;
-  border-radius: 16px;
-  padding: 24px;
+  border-radius: 22px;
   width: 100%;
-  max-width: 380px;
+  max-width: 440px;
+  max-height: 92vh;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  overflow: hidden;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
 }
 
-.restock-modal h3 {
-  margin: 0;
+.restock-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 22px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.restock-header h3 {
+  margin: 0 0 4px 0;
   font-size: 20px;
+  font-weight: 800;
   color: #0f172a;
 }
 
-.restock-modal p {
+.restock-product {
   margin: 0;
   font-size: 14px;
   color: #64748b;
+  font-weight: 500;
 }
 
-.restock-modal input {
-  padding: 12px;
-  font-size: 18px;
-  border: 2px solid #e2e8f0;
+.restock-close {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  background: #f1f5f9;
+  border: none;
   border-radius: 10px;
-  outline: none;
+  font-size: 15px;
+  color: #64748b;
+  cursor: pointer;
 }
 
-.restock-modal input:focus {
-  border-color: #0b3c5d;
+.restock-close:hover {
+  background: #e2e8f0;
+  color: #0f172a;
 }
 
-.restock-actions {
+.restock-body {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.stock-now,
+.stock-after {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stock-now {
+  background: #fef2f2;
+  color: #7f1d1d;
+}
+
+.stock-now strong {
+  font-size: 20px;
+  color: #dc2626;
+}
+
+.stock-after {
+  background: #ecfdf5;
+  border: 2px solid #a7f3d0;
+  color: #047857;
+}
+
+.stock-after strong {
+  font-size: 22px;
+  color: #047857;
+}
+
+.stock-after.invalid {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+}
+
+.stock-after.invalid strong {
+  color: #94a3b8;
+}
+
+/* Botones segmentados */
+.seg {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 6px;
+  background: #f1f5f9;
+  padding: 5px;
+  border-radius: 12px;
+}
+
+.seg button {
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 11px 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.seg button.active {
+  background: #fff;
+  color: #0b3c5d;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.seg-mini {
+  flex-shrink: 0;
+  width: 110px;
+}
+
+.unit-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #fffbeb;
+  border: 2px solid #fde68a;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.unit-picker > span {
+  font-size: 13px;
+  font-weight: 600;
+  color: #92400e;
+}
+
+/* Campo de cantidad */
+.restock-field > span {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 6px;
+}
+
+.input-row {
   display: flex;
   gap: 10px;
+  align-items: stretch;
 }
 
-.restock-actions button {
+.restock-field input {
   flex: 1;
-  padding: 12px;
+  min-width: 0;
+  box-sizing: border-box;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px 16px;
+  font-size: 26px; /* evita el zoom automático en iOS */
+  font-weight: 800;
+  color: #0f172a;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.restock-field input:focus {
+  border-color: #0b3c5d;
+  background: #fff;
+}
+
+/* Atajos */
+.chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 8px;
+}
+
+.chips button {
+  background: #f1f5f9;
+  border: 2px solid transparent;
   border-radius: 10px;
-  border: none;
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chips button:hover {
+  border-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+/* Acciones */
+.restock-actions {
+  display: flex;
+  gap: 12px;
+  padding: 18px 22px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.btn-cancel {
+  flex: 1;
+  background: #fff;
+  color: #64748b;
+  border: 2px solid #e2e8f0;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.btn-cancel:hover {
   background: #f1f5f9;
   color: #0f172a;
 }
 
-.restock-actions button[type="submit"] {
-  background: #0b3c5d;
+.btn-save {
+  flex: 1.4;
+  background: linear-gradient(135deg, #16a34a, #22c55e);
   color: #fff;
+  border: none;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.35);
+  transition: all 0.2s ease;
 }
 
-.restock-actions button:disabled {
+.btn-save:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn-save:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  box-shadow: none;
+}
+
+@media (max-width: 480px) {
+  .restock-btn {
+    padding: 9px 12px;
+    font-size: 13px;
+  }
 }
 </style>
