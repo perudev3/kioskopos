@@ -13,6 +13,7 @@
         <h1 class="welcome-title">{{ profile.name }}!</h1>
       </div>
     </div>
+
     <!-- RESUMEN FINANCIERO PRINCIPAL -->
     <div class="main-stats">
       <div class="main-stat-card danger">
@@ -40,41 +41,12 @@
 
     <!-- ESTADÍSTICAS SECUNDARIAS -->
     <div class="dashboard-grid">
-      <StatCard
-        title="💸 Total Ventas"
-        :value="formatMoney(totalVentas)"
-        color="primary"
-      />
-      
-      <StatCard
-        title="✨ Ganancia Neta"
-        :value="formatMoney(gananciaNeta)"
-        color="success"
-      />
-
-      <StatCard
-        title="🏦 Capital Registrado"
-        :value="formatMoney(capitalRegistrado)"
-        color="info"
-      />
-
-      <StatCard
-        title="📦 Stock Bajo"
-        :value="lowStockProducts.length"
-        color="warning"
-      />
-
-      <StatCard
-        title="🛒 Ventas Hoy"
-        :value="ventasHoy"
-        color="primary"
-      />
-
-      <StatCard
-        title="💰 Ganancia Hoy"
-        :value="formatMoney(gananciaHoy)"
-        color="success"
-      />
+      <StatCard title="💸 Total Ventas" :value="formatMoney(totalVentas)" color="primary" />
+      <StatCard title="✨ Ganancia Neta" :value="formatMoney(gananciaNeta)" color="success" />
+      <StatCard title="🏦 Capital Registrado" :value="formatMoney(capitalRegistrado)" color="info" />
+      <StatCard title="📦 Stock Bajo" :value="lowStockProducts.length" color="warning" />
+      <StatCard title="🛒 Ventas Hoy" :value="ventasHoy" color="primary" />
+      <StatCard title="💰 Ganancia Hoy" :value="formatMoney(gananciaHoy)" color="success" />
     </div>
 
     <!-- NOTA INFORMATIVA -->
@@ -109,30 +81,32 @@
     <div class="table-card">
       <h2>° Últimas ventas</h2>
 
-      <div class="table-wrapper" v-if="recentSales.length">
-        <table class="responsive-table">
-          <thead>
-            <tr>
-              <th>Total (S/)</th>
-              <th>Ganancia (S/)</th>
-              <th>Fecha</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="sale in paginatedSales" :key="sale.id">
-              <td class="amount-cell">S/ {{ sale.total }}</td>
-              <td class="profit-cell">S/ {{ sale.profit }}</td>
-              <td>{{ sale.date }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <template v-if="recentSales.length">
+        <div class="table-wrapper">
+          <table class="responsive-table">
+            <thead>
+              <tr>
+                <th>Total (S/)</th>
+                <th>Ganancia (S/)</th>
+                <th>Fecha</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="sale in paginatedSales" :key="sale.id">
+                <td class="amount-cell">S/ {{ sale.total }}</td>
+                <td class="profit-cell">S/ {{ sale.profit }}</td>
+                <td>{{ sale.date }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-      <div class="pagination" v-if="recentSales.length > perPage">
-        <button class="page-btn" :disabled="currentPage === 1" @click="currentPage--">⏮</button>
-        <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
-        <button class="page-btn" :disabled="currentPage === totalPages" @click="currentPage++">⏭</button>
-      </div>
+        <div class="pagination" v-if="recentSales.length > perPage">
+          <button class="page-btn" :disabled="currentPage === 1" @click="currentPage--">⏮</button>
+          <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+          <button class="page-btn" :disabled="currentPage === totalPages" @click="currentPage++">⏭</button>
+        </div>
+      </template>
 
       <div v-else class="empty-state">
         <span class="empty-icon">📭</span>
@@ -148,7 +122,7 @@
           📦 Ir a Productos
         </button>
       </div>
-      
+
       <div class="critical-message">
         <span class="critical-icon">🚨</span>
         <p>Tienes <strong>{{ lowStockProducts.length }}</strong> producto(s) que necesitan reposición urgente</p>
@@ -161,6 +135,7 @@
               <th>Producto</th>
               <th>Stock Actual</th>
               <th>Estado</th>
+              <th>Acción</th>
             </tr>
           </thead>
           <tbody>
@@ -168,21 +143,97 @@
               <td>{{ p.name }}</td>
               <td><span class="stock-badge" :class="getStockClass(p.stock)">{{ p.stock }}</span></td>
               <td><span class="status-badge danger">Crítico</span></td>
+              <td>
+                <button class="restock-btn" @click="openRestock(p)">
+                  ➕ Reponer
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
     </div>
+
+    <!-- MODAL REPONER STOCK -->
+    <Teleport to="body">
+      <div v-if="showRestock" class="modal-backdrop" @click.self="closeRestock">
+        <form class="restock-modal" @submit.prevent="saveRestock">
+          <div class="restock-header">
+            <div>
+              <h3>Reponer stock</h3>
+              <p class="restock-product">{{ restockProduct?.name }}</p>
+            </div>
+            <button type="button" class="restock-close" @click="closeRestock">✕</button>
+          </div>
+
+          <div class="restock-body">
+            <div class="current-stock">
+              <span>Stock actual</span>
+              <strong>{{ restockProduct?.stock }}</strong>
+            </div>
+
+            <div class="mode-switch">
+              <button type="button" :class="{ active: restockMode === 'add' }" @click="restockMode = 'add'">
+                Sumar al stock
+              </button>
+              <button type="button" :class="{ active: restockMode === 'set' }" @click="restockMode = 'set'">
+                Establecer stock
+              </button>
+            </div>
+
+            <label class="restock-field">
+              <span>{{ restockMode === 'add' ? 'Cantidad a agregar' : 'Nuevo stock total' }}</span>
+              <input
+                ref="restockInput"
+                v-model.number="restockQty"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="any"
+                placeholder="0"
+              />
+            </label>
+
+            <div class="qty-chips" v-if="restockMode === 'add'">
+              <button type="button" v-for="n in quickAdds" :key="n" @click="addQuick(n)">
+                +{{ n }}
+              </button>
+            </div>
+
+            <div class="new-stock-preview" :class="{ invalid: !restockValid }">
+              <span>Stock resultante</span>
+              <strong>{{ restockValid ? newStock : '—' }}</strong>
+            </div>
+          </div>
+
+          <div class="restock-actions">
+            <button type="button" class="btn-cancel" @click="closeRestock">Cancelar</button>
+            <button type="submit" class="btn-save" :disabled="!restockValid || restockSaving">
+              {{ restockSaving ? 'Guardando...' : 'Actualizar stock' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import StatCard from '../components/StatCard.vue';
 import api from '../lib/axios';
+import Swal from 'sweetalert2';
 import { Chart, registerables } from 'chart.js';
 
 Chart.register(...registerables);
+
+/* =========================================================
+   CONFIGURACIÓN
+   Misma ruta que usa tu vista Productos para actualizar.
+   Ajusta SOLO esto si tu endpoint o método es distinto.
+========================================================= */
+const STOCK_UPDATE_URL = (id) => `/products/${id}`;
+const STOCK_UPDATE_METHOD = 'put'; // 'put' o 'patch'
 
 const isLoading = ref(true);
 const profile = ref({ name: '' });
@@ -212,30 +263,22 @@ let profitChart = null;
 /* =========================
    COMPUTED
 ========================= */
-const gananciaVenta = computed(() => {
-  return totalVentas.value - gananciaNeta.value;
-});
-
-const capitalTotal = computed(() => {
-  return gananciaVenta.value + capitalRegistrado.value;
-});
-
-const capitalDisponible = computed(() => {
-  return capitalTotal.value - totalEgresos.value;
-});
+const gananciaVenta = computed(() => totalVentas.value - gananciaNeta.value);
+const capitalTotal = computed(() => gananciaVenta.value + capitalRegistrado.value);
+const capitalDisponible = computed(() => capitalTotal.value - totalEgresos.value);
 
 const porcentajeGastado = computed(() => {
   if (capitalTotal.value === 0) return 0;
   return Math.round((totalEgresos.value / capitalTotal.value) * 100);
 });
 
-const totalVentasUltimos7Dias = computed(() => {
-  return salesLast7Days.value.reduce((sum, val) => sum + val, 0);
-});
+const totalVentasUltimos7Dias = computed(() =>
+  salesLast7Days.value.reduce((sum, val) => sum + val, 0)
+);
 
-const totalGananciasUltimos7Dias = computed(() => {
-  return profitLast7Days.value.reduce((sum, val) => sum + val, 0);
-});
+const totalGananciasUltimos7Dias = computed(() =>
+  profitLast7Days.value.reduce((sum, val) => sum + val, 0)
+);
 
 /* =========================
    PAGINACIÓN
@@ -257,11 +300,99 @@ watch(recentSales, () => {
 });
 
 /* =========================
+   REPOSICIÓN RÁPIDA DE STOCK
+========================= */
+const showRestock = ref(false);
+const restockProduct = ref(null);
+const restockMode = ref('add'); // 'add' = sumar, 'set' = establecer
+const restockQty = ref(null);
+const restockSaving = ref(false);
+const restockInput = ref(null);
+const quickAdds = [5, 10, 20, 50];
+
+const round3 = (n) => Math.round(n * 1000) / 1000;
+
+const newStock = computed(() => {
+  const current = Number(restockProduct.value?.stock || 0);
+  const qty = Number(restockQty.value || 0);
+  return restockMode.value === 'add' ? round3(current + qty) : round3(qty);
+});
+
+const restockValid = computed(() => {
+  const qty = Number(restockQty.value);
+  if (restockQty.value === null || restockQty.value === '' || isNaN(qty)) return false;
+  if (restockMode.value === 'add') return qty > 0;
+  return qty >= 0;
+});
+
+const toast = (icon, title, timer = 1800) =>
+  Swal.fire({ toast: true, position: 'top-end', icon, title, showConfirmButton: false, timer });
+
+const openRestock = async (product) => {
+  restockProduct.value = product;
+  restockMode.value = 'add';
+  restockQty.value = null;
+  showRestock.value = true;
+  await nextTick();
+  restockInput.value?.focus();
+};
+
+const closeRestock = () => {
+  if (restockSaving.value) return;
+  showRestock.value = false;
+  restockProduct.value = null;
+  restockQty.value = null;
+};
+
+const addQuick = (n) => {
+  restockQty.value = round3(Number(restockQty.value || 0) + n);
+};
+
+// Al cambiar de modo se limpia la cantidad para evitar errores
+watch(restockMode, () => {
+  restockQty.value = null;
+  nextTick(() => restockInput.value?.focus());
+});
+
+const saveRestock = async () => {
+  if (!restockValid.value || restockSaving.value || !restockProduct.value) return;
+
+  const product = restockProduct.value;
+  const stockToSave = newStock.value;
+
+  restockSaving.value = true;
+  try {
+    await api[STOCK_UPDATE_METHOD](STOCK_UPDATE_URL(product.id), { stock: stockToSave });
+
+    // Actualiza al instante en pantalla
+    const item = lowStockProducts.value.find(p => p.id === product.id);
+    if (item) item.stock = stockToSave;
+
+    showRestock.value = false;
+    restockProduct.value = null;
+    restockQty.value = null;
+    toast('success', `${product.name}: stock actualizado a ${stockToSave}`);
+
+    // Refresca en segundo plano para que el producto salga de la alerta si ya no es crítico
+    await loadDashboard({ silent: true });
+  } catch (err) {
+    console.error('Error actualizando stock:', err);
+    Swal.fire({
+      icon: 'error',
+      title: 'No se pudo actualizar',
+      text: err?.response?.data?.message || err?.message || 'Error desconocido'
+    });
+  } finally {
+    restockSaving.value = false;
+  }
+};
+
+/* =========================
    CARGAR DASHBOARD DESDE LA API
 ========================= */
-const loadDashboard = async () => {
+const loadDashboard = async ({ silent = false } = {}) => {
   try {
-    isLoading.value = true;
+    if (!silent) isLoading.value = true;
 
     const response = await api.get('/dashboard', {
       params: {
@@ -285,12 +416,12 @@ const loadDashboard = async () => {
     salesLast7Days.value = data.salesLast7Days;
     profitLast7Days.value = data.profitLast7Days;
 
+    await nextTick();
     initCharts();
-
   } catch (error) {
     console.error('Error cargando dashboard desde la API:', error);
   } finally {
-    isLoading.value = false;
+    if (!silent) isLoading.value = false;
   }
 };
 
@@ -302,6 +433,10 @@ const goToProducts = () => {
    CHARTS
 ========================= */
 const initCharts = () => {
+  const salesCanvas = document.getElementById('salesChart');
+  const profitCanvas = document.getElementById('profitChart');
+  if (!salesCanvas || !profitCanvas) return;
+
   const labels = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (6 - i));
@@ -311,7 +446,7 @@ const initCharts = () => {
   if (salesChart) salesChart.destroy();
   if (profitChart) profitChart.destroy();
 
-  salesChart = new Chart(document.getElementById('salesChart'), {
+  salesChart = new Chart(salesCanvas, {
     type: 'line',
     data: {
       labels,
@@ -328,13 +463,11 @@ const initCharts = () => {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      }
+      plugins: { legend: { display: false } }
     }
   });
 
-  profitChart = new Chart(document.getElementById('profitChart'), {
+  profitChart = new Chart(profitCanvas, {
     type: 'bar',
     data: {
       labels,
@@ -348,9 +481,7 @@ const initCharts = () => {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      }
+      plugins: { legend: { display: false } }
     }
   });
 };
@@ -358,9 +489,7 @@ const initCharts = () => {
 /* =========================
    HELPERS
 ========================= */
-const formatMoney = (value) => {
-  return parseFloat(value || 0).toFixed(2);
-};
+const formatMoney = (value) => parseFloat(value || 0).toFixed(2);
 
 const getStockClass = (stock) => {
   if (stock === 0) return 'critical';
@@ -368,7 +497,7 @@ const getStockClass = (stock) => {
   return 'medium';
 };
 
-onMounted(loadDashboard);
+onMounted(() => loadDashboard());
 </script>
 
 <style scoped>
@@ -451,21 +580,10 @@ onMounted(loadDashboard);
   transform: translateY(-2px);
 }
 
-.main-stat-card.primary {
-  border-left-color: #0b3c5d;
-}
-
-.main-stat-card.danger {
-  border-left-color: #ef4444;
-}
-
-.main-stat-card.success {
-  border-left-color: #22c55e;
-}
-
-.main-stat-card.warning {
-  border-left-color: #f59e0b;
-}
+.main-stat-card.primary { border-left-color: #0b3c5d; }
+.main-stat-card.danger { border-left-color: #ef4444; }
+.main-stat-card.success { border-left-color: #22c55e; }
+.main-stat-card.warning { border-left-color: #f59e0b; }
 
 .stat-icon {
   font-size: 40px;
@@ -490,13 +608,8 @@ onMounted(loadDashboard);
   margin-bottom: 4px;
 }
 
-.stat-value.negative {
-  color: #ef4444;
-}
-
-.stat-value.positive {
-  color: #22c55e;
-}
+.stat-value.negative { color: #ef4444; }
+.stat-value.positive { color: #22c55e; }
 
 .stat-detail {
   font-size: 12px;
@@ -644,20 +757,9 @@ onMounted(loadDashboard);
   font-size: 13px;
 }
 
-.stock-badge.critical {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.stock-badge.low {
-  background: #fed7aa;
-  color: #9a3412;
-}
-
-.stock-badge.medium {
-  background: #fef3c7;
-  color: #92400e;
-}
+.stock-badge.critical { background: #fee2e2; color: #991b1b; }
+.stock-badge.low { background: #fed7aa; color: #9a3412; }
+.stock-badge.medium { background: #fef3c7; color: #92400e; }
 
 .status-badge {
   padding: 4px 10px;
@@ -669,6 +771,25 @@ onMounted(loadDashboard);
 .status-badge.danger {
   background: #fee2e2;
   color: #991b1b;
+}
+
+/* Botón reponer */
+.restock-btn {
+  background: #0b3c5d;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.restock-btn:hover {
+  background: #1e5a7d;
+  transform: translateY(-1px);
 }
 
 /* =========================
@@ -693,14 +814,8 @@ onMounted(loadDashboard);
   transition: background 0.2s;
 }
 
-.page-btn:hover {
-  background: #1fa2c1;
-}
-
-.page-btn:disabled {
-  background: #cbd5e1;
-  cursor: not-allowed;
-}
+.page-btn:hover { background: #1fa2c1; }
+.page-btn:disabled { background: #cbd5e1; cursor: not-allowed; }
 
 .page-info {
   font-weight: 700;
@@ -751,41 +866,8 @@ onMounted(loadDashboard);
 }
 
 @keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.8;
-  }
-  50% {
-    transform: scale(1.1);
-    opacity: 1;
-  }
-}
-
-/* =========================
-   RESPONSIVE
-========================= */
-@media (max-width: 768px) {
-  .dashboard-page {
-    padding: 16px;
-  }
-
-  .main-stats,
-  .charts-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .dashboard-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-  }
-
-  .stat-value {
-    font-size: 24px;
-  }
-
-  .chart-card canvas {
-    height: 220px !important;
-  }
+  0%, 100% { transform: scale(1); opacity: 0.8; }
+  50% { transform: scale(1.1); opacity: 1; }
 }
 
 /* =========================
@@ -881,7 +963,268 @@ onMounted(loadDashboard);
   font-size: 16px;
 }
 
+/* =========================
+   MODAL REPONER STOCK
+========================= */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+  padding: 20px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.restock-modal {
+  background: white;
+  width: 100%;
+  max-width: 420px;
+  max-height: 92vh;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+
+.restock-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.restock-header h3 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px 0;
+}
+
+.restock-product {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0;
+}
+
+.restock-close {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  background: #f1f5f9;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.restock-close:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.restock-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.current-stock,
+.new-stock-preview {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8fafc;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.current-stock strong {
+  font-size: 18px;
+  color: #991b1b;
+}
+
+.new-stock-preview {
+  background: #ecfdf5;
+  border: 2px solid #a7f3d0;
+  color: #047857;
+}
+
+.new-stock-preview strong {
+  font-size: 22px;
+  color: #047857;
+}
+
+.new-stock-preview.invalid {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #94a3b8;
+}
+
+.new-stock-preview.invalid strong {
+  color: #94a3b8;
+}
+
+.mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  background: #f1f5f9;
+  padding: 5px;
+  border-radius: 12px;
+}
+
+.mode-switch button {
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 11px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-switch button.active {
+  background: white;
+  color: #0b3c5d;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.restock-field span {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 6px;
+}
+
+.restock-field input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 12px 16px;
+  font-size: 24px; /* evita el zoom automático en iOS */
+  font-weight: 800;
+  color: #0f172a;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.restock-field input:focus {
+  border-color: #0b3c5d;
+  background: white;
+}
+
+.qty-chips {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.qty-chips button {
+  background: #f1f5f9;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.qty-chips button:hover {
+  border-color: #0b3c5d;
+}
+
+.restock-actions {
+  padding: 20px 24px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  gap: 12px;
+}
+
+.btn-cancel {
+  flex: 1;
+  background: white;
+  color: #64748b;
+  border: 2px solid #e2e8f0;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-cancel:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.btn-save {
+  flex: 1;
+  background: #0b3c5d;
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-save:hover:not(:disabled) {
+  background: #1e5a7d;
+  transform: translateY(-1px);
+}
+
+.btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* =========================
+   RESPONSIVE
+========================= */
 @media (max-width: 768px) {
+  .dashboard-page {
+    padding: 16px;
+  }
+
+  .main-stats,
+  .charts-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .stat-value {
+    font-size: 24px;
+  }
+
+  .chart-card canvas {
+    height: 220px !important;
+  }
+
   .alert-header {
     flex-direction: column;
     align-items: flex-start;
