@@ -1,6 +1,5 @@
 <script setup>
-import html2canvas from 'html2canvas'
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import api from '../lib/axios'
 import Swal from 'sweetalert2'
 import {
@@ -15,6 +14,13 @@ import {
 import Cart from '../components/Cart.vue'
 import PaymentModal from '../components/PaymentModal.vue'
 
+/* =========================================================
+   CONFIGURACIÓN
+   Endpoint que ya usa tu módulo de Productos para crear uno.
+   Ajusta SOLO esta constante si tu ruta es distinta.
+========================================================= */
+const PRODUCT_CREATE_ENDPOINT = '/products'
+
 const products = ref([])
 const cart = ref([])
 const showPayment = ref(false)
@@ -22,14 +28,38 @@ const paymentMethod = ref('cash')
 const user = ref(null)
 const loading = ref(false)
 const productFilter = ref('')
+const searchInput = ref('')
 const showProductListFallback = ref(false)
 const viewMode = ref('grid') // 'grid' o 'list'
 const categoryFilter = ref('all')
 
-// Nuevo: Modal de selección de peso
-const showWeightSelector = ref(false)
-const selectedProductForWeight = ref(null)
-const selectedWeight = ref(1) // 1 = 1kg, 0.5 = 1/2kg, 0.25 = 1/4kg
+/* =========================
+   UTILIDADES
+========================= */
+// Compara códigos numéricos ignorando ceros a la izquierda (UPC-A 12 dígitos vs EAN-13)
+const normalizeCode = (code) => {
+  const clean = String(code || '').trim().toUpperCase().replace(/\s/g, '')
+  return /^\d+$/.test(clean) ? clean.replace(/^0+/, '') : clean
+}
+
+const toast = (icon, title, timer = 1200) =>
+  Swal.fire({ toast: true, position: 'top-end', icon, title, showConfirmButton: false, timer })
+
+// Índice por código de barras: búsqueda instantánea al escanear
+const barcodeMap = computed(() => {
+  const map = new Map()
+  products.value.forEach(p => {
+    if (p.barcode) map.set(normalizeCode(p.barcode), p)
+  })
+  return map
+})
+
+// Búsqueda con retardo corto para no filtrar en cada tecla
+let searchTimer = null
+watch(searchInput, (val) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => { productFilter.value = val }, 180)
+})
 
 const openProductFallback = () => {
   stopScanner()
@@ -39,6 +69,7 @@ const openProductFallback = () => {
 const closeProductFallback = () => {
   showProductListFallback.value = false
   productFilter.value = ''
+  searchInput.value = ''
   categoryFilter.value = 'all'
 }
 
@@ -57,49 +88,137 @@ const filteredProducts = computed(() => {
     filtered = filtered.filter(p => p.category === categoryFilter.value)
   }
 
-  if (productFilter.value) {
+  const q = productFilter.value.trim().toLowerCase()
+  if (q) {
     filtered = filtered.filter(p =>
-      p.name.toLowerCase().includes(productFilter.value.toLowerCase())
+      p.name.toLowerCase().includes(q) ||
+      (p.barcode && String(p.barcode).toLowerCase().includes(q))
     )
   }
 
   return filtered
 })
 
-// Opciones de peso
+/* =========================
+   VENTA POR PESO (kg / gramos)
+   El peso se guarda siempre en KILOS (0.25, 0.5, 1, 0.35...)
+   para que el backend reciba el mismo formato de siempre.
+========================= */
+const showWeightSelector = ref(false)
+const selectedProductForWeight = ref(null)
+const selectedGrams = ref(1000) // fuente de verdad en gramos
+const gramsInput = ref(null)
+
+const selectedWeight = computed(() => Number(selectedGrams.value || 0) / 1000)
+
+// Atajos rápidos (se mantienen los de siempre + algunos gramajes comunes)
 const weightOptions = [
   { value: 1, label: '1 kg', fraction: '1' },
   { value: 0.5, label: '1/2 kg', fraction: '1/2' },
   { value: 0.25, label: '1/4 kg', fraction: '1/4' }
 ]
+const quickGrams = [50, 100, 150, 200]
 
-// Calcular precio según peso seleccionado
+const formatWeight = (kg) => {
+  const g = Math.round(kg * 1000)
+  return g >= 1000 && g % 1000 === 0 ? `${g / 1000} kg` : g >= 1000 ? `${(g / 1000).toFixed(3).replace(/0+$/, '')} kg` : `${g} g`
+}
+
+// Precio según gramos ingresados
 const calculatedPrice = computed(() => {
-  if (!selectedProductForWeight.value) return 0
+  if (!selectedProductForWeight.value) return '0.00'
   const basePrice = Number(selectedProductForWeight.value.sale_price)
-  const weight = Number(selectedWeight.value)
-  const calculated = basePrice * weight
-  return calculated.toFixed(2)
+  return (basePrice * selectedWeight.value).toFixed(2)
 })
 
-// 1. Mantienes tu declaración de variables
-const paymentQRs = ref([])
-// 2. BORRAS el watch completo y lo cambias por esto:
-const selectedQR = computed(() => {
-  if (paymentMethod.value !== 'yape' && paymentMethod.value !== 'plin') {
-    return null;
-  }
-  
-  if (!paymentQRs.value || paymentQRs.value.length === 0) {
-    return null;
+const weightInCart = (productId) =>
+  cart.value
+    .filter(p => p.id === productId && p.is_weight_product)
+    .reduce((sum, p) => sum + p.weight * p.quantity, 0)
+
+const setGrams = (g) => { selectedGrams.value = g }
+
+const openWeightSelector = async (product) => {
+  selectedProductForWeight.value = product
+  selectedGrams.value = 1000
+  showWeightSelector.value = true
+  await nextTick()
+  gramsInput.value?.focus()
+  gramsInput.value?.select()
+}
+
+const confirmWeightSelection = () => {
+  if (!selectedProductForWeight.value) return
+
+  const product = selectedProductForWeight.value
+  const grams = Math.round(Number(selectedGrams.value))
+
+  if (!grams || grams <= 0) {
+    toast('warning', 'Ingresa los gramos', 1500)
+    return
   }
 
-  // Ahora sí, como paymentQRs.value es un array, .find() buscará sin problemas
-  return paymentQRs.value.find(qr => 
-    qr.method.toLowerCase() === paymentMethod.value.toLowerCase() && 
+  const kg = grams / 1000
+  const stock = Number(product.stock)
+  if (weightInCart(product.id) + kg > stock + 1e-9) {
+    toast('warning', `Stock insuficiente (${stock} kg disponibles)`, 2000)
+    return
+  }
+
+  const priceForWeight = parseFloat((Number(product.sale_price) * kg).toFixed(2))
+  const weightLabel = formatWeight(kg)
+
+  const existingItem = cart.value.find(
+    p => p.id === product.id && p.weight === kg
+  )
+
+  if (existingItem) {
+    existingItem.quantity++
+  } else {
+    cart.value.push({
+      id: product.id,
+      name: product.name,
+      displayName: `${product.name} (${weightLabel})`,
+      image_url: product.image_url,
+      barcode: product.barcode,
+      category: product.category,
+      unit_type: product.unit_type,
+      user_id: product.user_id,
+      stock: product.stock,
+      sale_price: priceForWeight,
+      price: priceForWeight,
+      original_price: product.sale_price,
+      weight: kg,
+      is_weight_product: true,
+      quantity: 1
+    })
+  }
+
+  toast('success', `${product.name} (${weightLabel}) añadido - S/ ${priceForWeight.toFixed(2)}`, 1500)
+
+  showWeightSelector.value = false
+  selectedProductForWeight.value = null
+}
+
+const cancelWeightSelection = () => {
+  showWeightSelector.value = false
+  selectedProductForWeight.value = null
+  selectedGrams.value = 1000
+}
+
+/* =========================
+   QR DE PAGO
+========================= */
+const paymentQRs = ref([])
+const selectedQR = computed(() => {
+  if (paymentMethod.value !== 'yape' && paymentMethod.value !== 'plin') return null
+  if (!paymentQRs.value || paymentQRs.value.length === 0) return null
+
+  return paymentQRs.value.find(qr =>
+    qr.method.toLowerCase() === paymentMethod.value.toLowerCase() &&
     (qr.active == 1 || qr.active === true)
-  ) || null;
-});
+  ) || null
+})
 
 const updateQuantity = (id, newQty) => {
   const item = cart.value.find(p => p.id === id)
@@ -113,15 +232,120 @@ const updateQuantity = (id, newQty) => {
 }
 
 /* =========================
+   REGISTRO RÁPIDO DE PRODUCTO (sin salir del POS)
+========================= */
+const showQuickCreate = ref(false)
+const quickSaving = ref(false)
+const quickNameInput = ref(null)
+const quickForm = reactive({
+  name: '',
+  barcode: '',
+  sale_price: '',
+  unit_type: 'UNIT',
+  stock: 1,
+  category: ''
+})
+
+const resetQuickForm = () => {
+  quickForm.name = ''
+  quickForm.barcode = ''
+  quickForm.sale_price = ''
+  quickForm.unit_type = 'UNIT'
+  quickForm.stock = 1
+  quickForm.category = ''
+}
+
+const openQuickCreate = async (barcode = '', name = '') => {
+  stopScanner()
+  showProductListFallback.value = false
+  resetQuickForm()
+  quickForm.barcode = barcode || ''
+  quickForm.name = name || ''
+  showQuickCreate.value = true
+  await nextTick()
+  quickNameInput.value?.focus()
+}
+
+const closeQuickCreate = () => {
+  showQuickCreate.value = false
+  resetQuickForm()
+}
+
+// Al cambiar a "kilos" el stock se interpreta en kg
+watch(() => quickForm.unit_type, (type) => {
+  if (type === 'WEIGHT' && Number(quickForm.stock) <= 1) quickForm.stock = 10
+})
+
+const saveQuickProduct = async () => {
+  const name = quickForm.name.trim()
+  const price = Number(quickForm.sale_price)
+  const stock = Number(quickForm.stock)
+
+  if (!name) return toast('warning', 'Escribe el nombre del producto', 1800)
+  if (!price || price <= 0) return toast('warning', 'Ingresa un precio válido', 1800)
+  if (!stock || stock <= 0) return toast('warning', 'Ingresa el stock', 1800)
+
+  // Si el código ya existe, no se duplica: se agrega el existente
+  const code = quickForm.barcode.trim()
+  if (code) {
+    const existing = barcodeMap.value.get(normalizeCode(code))
+    if (existing) {
+      closeQuickCreate()
+      toast('info', 'Ese código ya existe, se agregó al carrito', 1800)
+      addToCart(existing)
+      return
+    }
+  }
+
+  quickSaving.value = true
+  try {
+    const { data } = await api.post(PRODUCT_CREATE_ENDPOINT, {
+      name,
+      barcode: code || null,
+      sale_price: price,
+      unit_type: quickForm.unit_type,
+      stock,
+      category: quickForm.category.trim() || null
+    })
+
+    // Acepta { product: {...} }, { data: {...} } o el objeto directo
+    let created = data?.product || data?.data || data
+    if (!created || !created.id) {
+      // Respaldo: recarga el catálogo y busca el recién creado
+      await loadProducts()
+      created = (code && barcodeMap.value.get(normalizeCode(code))) ||
+        [...products.value].reverse().find(p => p.name === name)
+    } else {
+      products.value.push(created)
+    }
+
+    closeQuickCreate()
+
+    if (created) {
+      toast('success', `${name} registrado`, 1200)
+      addToCart(created)
+    }
+  } catch (err) {
+    console.error(err)
+    Swal.fire({
+      icon: 'error',
+      title: 'No se pudo registrar',
+      text: err?.response?.data?.message || err?.message || 'Error desconocido'
+    })
+  } finally {
+    quickSaving.value = false
+  }
+}
+
+/* =========================
    SCANNER CÁMARA (OPTIMIZADO)
-   - Detector nativo del navegador (rápido y preciso) con ZXing de respaldo
+   - Detector nativo del navegador con ZXing de respaldo
    - Cámara en alta resolución, enfoque continuo y zoom automático
    - Valida checksum y exige lecturas repetidas (sin falsos positivos)
 ========================= */
 const showScanner = ref(false)
 let scanning = false
 
-// Controles de cámara (zoom / linterna)
 const torchSupported = ref(false)
 const torchOn = ref(false)
 const zoomSupported = ref(false)
@@ -131,8 +355,8 @@ const zoomStep = ref(0.1)
 const zoomValue = ref(1)
 
 const NATIVE_FORMATS = ['ean_13', 'ean_8', 'upc_a', 'code_128']
-const CONFIRM_READS = 2      // lecturas iguales seguidas para aceptar el código
-const READ_WINDOW_MS = 1200  // tiempo máximo entre esas lecturas
+const CONFIRM_READS = 2
+const READ_WINDOW_MS = 1200
 
 let stream = null
 let videoEl = null
@@ -142,15 +366,7 @@ let zxingReader = null
 let candidate = null
 let candidateCount = 0
 let candidateAt = 0
-let lastMissCode = null
-let lastMissAt = 0
 const decodeCanvas = document.createElement('canvas')
-
-// Compara códigos numéricos ignorando ceros a la izquierda (UPC-A 12 dígitos vs EAN-13)
-const normalizeCode = (code) => {
-  const clean = String(code || '').trim().toUpperCase().replace(/\s/g, '')
-  return /^\d+$/.test(clean) ? clean.replace(/^0+/, '') : clean
-}
 
 const isValidGtin = (code) => {
   if (!/^(\d{8}|\d{12,14})$/.test(code)) return false
@@ -193,7 +409,6 @@ const startScanner = async () => {
       }
     })
 
-    // Si el usuario cerró el escáner mientras se pedía el permiso
     if (!showScanner.value) {
       stream.getTracks().forEach(t => t.stop())
       stream = null
@@ -212,7 +427,7 @@ const startScanner = async () => {
 
     scanning = true
 
-    // 1) Detector nativo (Chrome/Android): el más rápido y preciso
+    // 1) Detector nativo (Chrome/Android)
     if ('BarcodeDetector' in window) {
       try {
         const supported = await window.BarcodeDetector.getSupportedFormats()
@@ -252,7 +467,6 @@ const startScanner = async () => {
   }
 }
 
-// Enfoque continuo + zoom inicial: evita tener que acercar/alejar tanto el celular
 const setupTrackCapabilities = async () => {
   const track = stream?.getVideoTracks()[0]
   if (!track) return
@@ -317,7 +531,6 @@ const loopZxing = () => {
   if (videoEl && videoEl.readyState >= 2 && videoEl.videoWidth) {
     const vw = videoEl.videoWidth
     const vh = videoEl.videoHeight
-    // Región central: menos ruido y decodificación más rápida
     const cw = Math.round(vw * 0.9)
     const ch = Math.round(vh * 0.5)
     const sx = Math.round((vw - cw) / 2)
@@ -341,7 +554,6 @@ const loopZxing = () => {
   if (scanning) scanTimer = setTimeout(loopZxing, 90)
 }
 
-// Valida y confirma la lectura antes de llamar a onDetected
 const handleRead = (raw) => {
   const code = String(raw || '').trim()
   if (!code) return
@@ -391,41 +603,20 @@ const stopScanner = () => {
 
 const onDetected = (data) => {
   if (!data || !data.codeResult) return
-  const scannedCode = normalizeCode(data.codeResult.code)
-
-  const product = products.value.find(p =>
-    normalizeCode(p.barcode) === scannedCode
-  )
+  const rawCode = String(data.codeResult.code || '').trim()
+  const product = barcodeMap.value.get(normalizeCode(rawCode))
 
   if (product) {
     if (navigator.vibrate) navigator.vibrate(80)
-    addToCart(product)
     stopScanner()
-    Swal.fire({ 
-      toast: true, 
-      position: 'top-end', 
-      icon: 'success', 
-      title: `${product.name} agregado`, 
-      showConfirmButton: false, 
-      timer: 1500 
-    })
+    addToCart(product)
     return
   }
 
-  // Código leído pero no registrado: avisa (sin repetir el aviso a cada lectura)
-  const now = Date.now()
-  if (scannedCode !== lastMissCode || now - lastMissAt > 3000) {
-    lastMissCode = scannedCode
-    lastMissAt = now
-    Swal.fire({
-      toast: true,
-      position: 'top-end',
-      icon: 'warning',
-      title: 'Producto no registrado',
-      showConfirmButton: false,
-      timer: 1800
-    })
-  }
+  // Código leído pero no registrado: abre el registro rápido con el código ya cargado
+  if (navigator.vibrate) navigator.vibrate([60, 40, 60])
+  toast('info', 'Producto nuevo: complétalo y se agrega al carrito', 1800)
+  openQuickCreate(rawCode)
 }
 
 /* =========================
@@ -439,105 +630,49 @@ const loadProducts = async () => {
     const response = await api.get('/pos/data')
     products.value = response.data.products || []
     paymentQRs.value = response.data.paymentQrs || []
-
   } catch (error) {
     console.error('Error cargando datos del POS:', error)
   }
 }
 
 onMounted(loadProducts)
-onBeforeUnmount(stopScanner)
+onBeforeUnmount(() => {
+  clearTimeout(searchTimer)
+  stopScanner()
+})
 
 /* =========================
-   CARRITO - CON PESO
+   CARRITO
 ========================= */
 const addToCart = (product) => {
   if (product.unit_type === 'WEIGHT') {
-    selectedProductForWeight.value = product
-    selectedWeight.value = 1
-    showWeightSelector.value = true
+    openWeightSelector(product)
     return
   }
 
   const item = cart.value.find(p => p.id === product.id)
   if (item) {
-    if (item.quantity < product.stock) item.quantity++
+    if (item.quantity < product.stock) {
+      item.quantity++
+    } else {
+      toast('warning', 'Stock máximo alcanzado', 1200)
+      return
+    }
   } else {
-    cart.value.push({ 
-      ...product, 
-      quantity: 1, 
+    cart.value.push({
+      ...product,
+      quantity: 1,
       price: product.sale_price,
-      weight: null 
+      weight: null
     })
   }
 
-  Swal.fire({
-    toast: true,
-    position: 'top-end',
-    icon: 'success',
-    title: `${product.name} añadido`,
-    showConfirmButton: false,
-    timer: 1000
-  })
+  toast('success', `${product.name} añadido`, 1000)
 }
 
-const confirmWeightSelection = () => {
-  if (!selectedProductForWeight.value) return
-
-  const product = selectedProductForWeight.value
-  const priceForWeight = parseFloat(calculatedPrice.value)
-  const weightLabel = weightOptions.find(w => w.value === selectedWeight.value)?.label
-
-  const existingItem = cart.value.find(
-    p => p.id === product.id && p.weight === selectedWeight.value
-  )
-
-  if (existingItem) {
-    existingItem.quantity++
-  } else {
-    const newItem = {
-      id: product.id,
-      name: product.name,
-      displayName: `${product.name} (${weightLabel})`,
-      image_url: product.image_url,
-      barcode: product.barcode,
-      category: product.category,
-      unit_type: product.unit_type,
-      user_id: product.user_id,
-      stock: product.stock,
-      sale_price: priceForWeight,
-      price: priceForWeight,
-      original_price: product.sale_price,
-      weight: selectedWeight.value,
-      is_weight_product: true,
-      quantity: 1
-    }
-    
-    cart.value.push(newItem)
-  }
-
-  Swal.fire({
-    toast: true,
-    position: 'top-end',
-    icon: 'success',
-    title: `${product.name} (${weightLabel}) añadido - S/ ${priceForWeight}`,
-    showConfirmButton: false,
-    timer: 1500
-  })
-
-  showWeightSelector.value = false
-  selectedProductForWeight.value = null
-}
-
-const cancelWeightSelection = () => {
-  showWeightSelector.value = false
-  selectedProductForWeight.value = null
-  selectedWeight.value = 1
-}
+const cancelWeightSelectionAndClose = cancelWeightSelection
 
 const removeFromCart = (id) => { cart.value = cart.value.filter(p => p.id !== id) }
-const increaseQty = (id) => { const item = cart.value.find(p => p.id === id); if (item && item.quantity < item.stock) item.quantity++ }
-const decreaseQty = (id) => { const item = cart.value.find(p => p.id === id); if (!item) return; item.quantity--; if (item.quantity <= 0) removeFromCart(id) }
 
 /* =========================
    TOTAL
@@ -549,6 +684,7 @@ const total = computed(() => cart.value.reduce((sum, p) => sum + p.price * p.qua
 ========================= */
 const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   if (!cart.value.length) return Swal.fire('Carrito vacío', 'Agrega productos', 'warning')
+  if (loading.value) return
   loading.value = true
 
   try {
@@ -572,13 +708,12 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
     showPayment.value = false
     await loadProducts()
     Swal.fire('Venta registrada', '', 'success')
-
   } catch (err) {
     console.error('ERROR GENERAL:', err)
-    Swal.fire({ 
-      icon: 'error', 
-      title: 'Error al guardar', 
-      html: `<p style="text-align:left;font-size:14px"><b>Mensaje:</b><br>${err?.response?.data?.message || err?.message || 'Error desconocido'}</p>` 
+    Swal.fire({
+      icon: 'error',
+      title: 'Error al guardar',
+      html: `<p style="text-align:left;font-size:14px"><b>Mensaje:</b><br>${err?.response?.data?.message || err?.message || 'Error desconocido'}</p>`
     })
   } finally {
     loading.value = false
@@ -614,6 +749,13 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
             </svg>
             Productos
           </button>
+          <button class="btn-products btn-new" @click="openQuickCreate()">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Nuevo
+          </button>
         </div>
       </div>
 
@@ -630,7 +772,6 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
       </div>
     </div>
 
-    <!-- Modales (Teleport: se dibujan sobre toda la app, por encima del menú/barra superior) -->
     <Teleport to="body">
     <!-- Modal Scanner -->
     <div v-if="showScanner" class="modal-backdrop" @click.self="stopScanner">
@@ -706,14 +847,14 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
             </svg>
             <input
               type="text"
-              v-model="productFilter"
-              placeholder="Buscar productos..."
+              v-model="searchInput"
+              placeholder="Buscar por nombre o código..."
             />
           </div>
 
           <div class="view-controls">
-            <button 
-              @click="viewMode = 'grid'" 
+            <button
+              @click="viewMode = 'grid'"
               :class="{ active: viewMode === 'grid' }"
               class="view-btn"
             >
@@ -724,8 +865,8 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
                 <rect x="3" y="14" width="7" height="7"></rect>
               </svg>
             </button>
-            <button 
-              @click="viewMode = 'list'" 
+            <button
+              @click="viewMode = 'list'"
               :class="{ active: viewMode === 'list' }"
               class="view-btn"
             >
@@ -750,7 +891,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
             @click="addToCart(p)"
           >
             <div class="product-image">
-              <img v-if="p.image_url" :src="p.image_url" :alt="p.name" />
+              <img v-if="p.image_url" :src="p.image_url" :alt="p.name" loading="lazy" />
               <div v-else class="image-placeholder">
                 <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -788,7 +929,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
             @click="addToCart(p)"
           >
             <div class="row-image">
-              <img v-if="p.image_url" :src="p.image_url" :alt="p.name" />
+              <img v-if="p.image_url" :src="p.image_url" :alt="p.name" loading="lazy" />
               <div v-else class="image-placeholder-small">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -814,26 +955,96 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
           </div>
         </div>
 
-        <!-- Empty State -->
+        <!-- Empty State: permite registrar lo que se buscó -->
         <div v-if="filteredProducts.length === 0" class="empty-state">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <circle cx="11" cy="11" r="8"></circle>
             <path d="m21 21-4.35-4.35"></path>
           </svg>
           <p>No se encontraron productos</p>
+          <button class="btn-confirm-weight btn-empty-create" @click="openQuickCreate('', searchInput.trim())">
+            + Registrar
+            <template v-if="searchInput.trim()">"{{ searchInput.trim() }}"</template>
+            <template v-else>nuevo producto</template>
+          </button>
         </div>
       </div>
     </div>
 
+    <!-- Modal Registro Rápido -->
+    <div v-if="showQuickCreate" class="modal-backdrop" @click.self="closeQuickCreate">
+      <form class="modal-weight-selector" @submit.prevent="saveQuickProduct">
+        <div class="weight-header">
+          <div>
+            <h3>Registro rápido</h3>
+            <p class="weight-subtitle">Se guarda y se agrega al carrito</p>
+          </div>
+          <button type="button" @click="closeQuickCreate" class="close-btn">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+
+        <div class="weight-content quick-form">
+          <label class="field">
+            <span>Nombre *</span>
+            <input ref="quickNameInput" v-model="quickForm.name" type="text" placeholder="Ej: Arroz extra" autocomplete="off" />
+          </label>
+
+          <label class="field">
+            <span>Código de barras</span>
+            <input v-model="quickForm.barcode" type="text" inputmode="numeric" placeholder="Opcional" autocomplete="off" />
+          </label>
+
+          <div class="unit-switch">
+            <button type="button" :class="{ active: quickForm.unit_type === 'UNIT' }" @click="quickForm.unit_type = 'UNIT'">
+              Por unidad
+            </button>
+            <button type="button" :class="{ active: quickForm.unit_type === 'WEIGHT' }" @click="quickForm.unit_type = 'WEIGHT'">
+              Por kilo
+            </button>
+          </div>
+
+          <div class="field-row">
+            <label class="field">
+              <span>Precio {{ quickForm.unit_type === 'WEIGHT' ? 'por kg' : '' }} (S/) *</span>
+              <input v-model="quickForm.sale_price" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" />
+            </label>
+            <label class="field">
+              <span>Stock ({{ quickForm.unit_type === 'WEIGHT' ? 'kg' : 'und' }}) *</span>
+              <input v-model="quickForm.stock" type="number" inputmode="decimal" min="0" step="any" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Categoría</span>
+            <input v-model="quickForm.category" type="text" list="quick-categories" placeholder="Opcional" autocomplete="off" />
+            <datalist id="quick-categories">
+              <option v-for="c in categories.filter(c => c !== 'all')" :key="c" :value="c" />
+            </datalist>
+          </label>
+        </div>
+
+        <div class="weight-actions">
+          <button type="button" class="btn-cancel-weight" @click="closeQuickCreate">Cancelar</button>
+          <button type="submit" class="btn-confirm-weight" :disabled="quickSaving">
+            {{ quickSaving ? 'Guardando...' : 'Guardar y agregar' }}
+          </button>
+        </div>
+      </form>
+    </div>
+
     <!-- Modal Selector de Peso -->
     <div v-if="showWeightSelector" class="modal-backdrop" @click.self="cancelWeightSelection">
-      <div class="modal-weight-selector">
+      <form class="modal-weight-selector" @submit.prevent="confirmWeightSelection">
         <div class="weight-header">
           <div>
             <h3>{{ selectedProductForWeight?.name }}</h3>
-            <p class="weight-subtitle">Selecciona la cantidad de kilos</p>
+            <p class="weight-subtitle">Ingresa los gramos o elige un atajo</p>
           </div>
-          <button @click="cancelWeightSelection" class="close-btn">
+          <button type="button" @click="cancelWeightSelection" class="close-btn">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -847,11 +1058,30 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
             <span class="value">S/ {{ selectedProductForWeight?.sale_price }}</span>
           </div>
 
+          <!-- Entrada en gramos -->
+          <label class="grams-input">
+            <span>Cantidad en gramos</span>
+            <div class="grams-field">
+              <input
+                ref="gramsInput"
+                v-model.number="selectedGrams"
+                type="number"
+                inputmode="numeric"
+                min="1"
+                step="1"
+                placeholder="0"
+              />
+              <em>g</em>
+            </div>
+            <small v-if="selectedGrams > 0">= {{ formatWeight(selectedWeight) }}</small>
+          </label>
+
           <div class="weight-options">
             <button
+              type="button"
               v-for="option in weightOptions"
               :key="option.value"
-              @click="selectedWeight = option.value"
+              @click="setGrams(option.value * 1000)"
               :class="{ active: selectedWeight === option.value }"
               class="weight-option"
             >
@@ -863,6 +1093,18 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
             </button>
           </div>
 
+          <div class="gram-chips">
+            <button
+              type="button"
+              v-for="g in quickGrams"
+              :key="g"
+              :class="{ active: selectedGrams === g }"
+              @click="setGrams(g)"
+            >
+              {{ g }} g
+            </button>
+          </div>
+
           <div class="calculated-price">
             <div class="price-label">Precio a pagar:</div>
             <div class="price-value">S/ {{ calculatedPrice }}</div>
@@ -870,17 +1112,17 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
         </div>
 
         <div class="weight-actions">
-          <button class="btn-cancel-weight" @click="cancelWeightSelection">
+          <button type="button" class="btn-cancel-weight" @click="cancelWeightSelection">
             Cancelar
           </button>
-          <button class="btn-confirm-weight" @click="confirmWeightSelection">
+          <button type="submit" class="btn-confirm-weight">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="20 6 9 17 4 12"></polyline>
             </svg>
             Agregar al carrito
           </button>
         </div>
-      </div>
+      </form>
     </div>
 
     <!-- Modal Pago -->
@@ -945,6 +1187,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 .header-actions {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .btn-scan {
@@ -1008,6 +1251,17 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 
 .btn-products:active {
   transform: translateY(0);
+}
+
+.btn-new {
+  border-color: #10b981;
+  color: #047857;
+}
+
+.btn-new:hover {
+  border-color: #047857;
+  color: #047857;
+  background: #ecfdf5;
 }
 
 /* Cart Section */
@@ -1345,19 +1599,19 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 .products-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  grid-auto-rows: max-content;   /* FIX: evita que las filas se colapsen a 0 */
-  align-content: start;          /* FIX: las filas no se estiran ni se encogen */
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: 20px;
   padding: 24px;
   overflow-y: auto;
-  flex: 1 1 auto;                /* FIX: ocupa el espacio disponible del modal */
-  min-height: 0;                 /* FIX: permite el scroll interno dentro del flex */
+  flex: 1 1 auto;
+  min-height: 0;
   max-height: calc(90vh - 260px);
   -webkit-overflow-scrolling: touch;
 }
 
 .product-card {
-  display: flex;                 /* FIX: estructura vertical estable */
+  display: flex;
   flex-direction: column;
   background: white;
   border: 2px solid #e2e8f0;
@@ -1378,7 +1632,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   position: relative;
   width: 100%;
   height: 160px;
-  flex-shrink: 0;                /* FIX: la imagen nunca se encoge */
+  flex-shrink: 0;
   background: #f8fafc;
   overflow: hidden;
 }
@@ -1502,7 +1756,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   display: flex;
   align-items: center;
   gap: 16px;
-  flex-shrink: 0;                /* FIX: las filas no se aplastan */
+  flex-shrink: 0;
   background: white;
   border: 2px solid #e2e8f0;
   padding: 16px;
@@ -1621,8 +1875,29 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   margin: 0;
 }
 
+.btn-empty-create {
+  flex: none;
+  padding: 14px 24px;
+}
+
 /* Responsive móvil: 2 columnas y tarjetas más compactas */
 @media (max-width: 640px) {
+  .pos-layout {
+    padding: 14px;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions button {
+    flex: 1;
+    justify-content: center;
+    padding: 12px 10px;
+    font-size: 14px;
+    gap: 8px;
+  }
+
   .products-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
@@ -1655,11 +1930,12 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   }
 }
 
-/* Modal Selector de Peso */
+/* Modal Selector de Peso / Registro rápido */
 .modal-weight-selector {
   background: white;
   width: 100%;
   max-width: 450px;
+  max-height: 92vh;
   border-radius: 24px;
   overflow: hidden;
   box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
@@ -1673,6 +1949,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   align-items: flex-start;
   padding: 20px 24px;
   border-bottom: 1px solid #e2e8f0;
+  flex-shrink: 0;
 }
 
 .weight-header h3 {
@@ -1690,6 +1967,8 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 
 .weight-content {
   padding: 24px;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .base-price-info {
@@ -1714,18 +1993,73 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   font-weight: 700;
 }
 
+/* Entrada de gramos */
+.grams-input {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.grams-input > span {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 6px;
+}
+
+.grams-field {
+  display: flex;
+  align-items: center;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 0 16px;
+  transition: all 0.2s ease;
+}
+
+.grams-field:focus-within {
+  border-color: #0b3c5d;
+  background: white;
+}
+
+.grams-field input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 28px;
+  font-weight: 800;
+  color: #0f172a;
+  padding: 12px 0;
+}
+
+.grams-field em {
+  font-style: normal;
+  font-size: 20px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.grams-input small {
+  display: block;
+  margin-top: 6px;
+  font-size: 13px;
+  color: #64748b;
+}
+
 .weight-options {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
-  margin-bottom: 24px;
+  margin-bottom: 12px;
 }
 
 .weight-option {
   background: #f8fafc;
   border: 2px solid #e2e8f0;
   border-radius: 14px;
-  padding: 16px 12px;
+  padding: 14px 10px;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -1767,6 +2101,34 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   color: #0b3c5d;
 }
 
+.gram-chips {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.gram-chips button {
+  background: #f1f5f9;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.gram-chips button:hover {
+  border-color: #0b3c5d;
+}
+
+.gram-chips button.active {
+  background: #0b3c5d;
+  color: white;
+}
+
 .calculated-price {
   background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
   border: 2px solid #bae6fd;
@@ -1796,6 +2158,7 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
   border-top: 1px solid #e2e8f0;
   display: flex;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .btn-cancel-weight {
@@ -1840,5 +2203,82 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
 .btn-confirm-weight:hover {
   background: #1e5a7d;
   transform: translateY(-1px);
+}
+
+.btn-confirm-weight:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Formulario de registro rápido */
+.quick-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+
+.field > span {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #f8fafc;
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 16px; /* 16px evita el zoom automático en iOS */
+  color: #0f172a;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.field input:focus {
+  border-color: #0b3c5d;
+  background: white;
+}
+
+.field-row {
+  display: flex;
+  gap: 12px;
+}
+
+.unit-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  background: #f1f5f9;
+  padding: 5px;
+  border-radius: 12px;
+}
+
+.unit-switch button {
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  padding: 11px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.unit-switch button.active {
+  background: white;
+  color: #0b3c5d;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 </style>
