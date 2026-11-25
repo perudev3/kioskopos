@@ -233,6 +233,8 @@ const updateQuantity = (id, newQty) => {
 
 /* =========================
    REGISTRO RÁPIDO DE PRODUCTO (sin salir del POS)
+   Campos que exige tu ProductController@store:
+   name, price (compra), sale_price (venta), stock, unit_type
 ========================= */
 const showQuickCreate = ref(false)
 const quickSaving = ref(false)
@@ -240,19 +242,19 @@ const quickNameInput = ref(null)
 const quickForm = reactive({
   name: '',
   barcode: '',
+  price: '',
   sale_price: '',
   unit_type: 'UNIT',
-  stock: 1,
-  category: ''
+  stock: 1
 })
 
 const resetQuickForm = () => {
   quickForm.name = ''
   quickForm.barcode = ''
+  quickForm.price = ''
   quickForm.sale_price = ''
   quickForm.unit_type = 'UNIT'
   quickForm.stock = 1
-  quickForm.category = ''
 }
 
 const openQuickCreate = async (barcode = '', name = '') => {
@@ -278,11 +280,13 @@ watch(() => quickForm.unit_type, (type) => {
 
 const saveQuickProduct = async () => {
   const name = quickForm.name.trim()
-  const price = Number(quickForm.sale_price)
+  const cost = Number(quickForm.price)
+  const salePrice = Number(quickForm.sale_price)
   const stock = Number(quickForm.stock)
 
   if (!name) return toast('warning', 'Escribe el nombre del producto', 1800)
-  if (!price || price <= 0) return toast('warning', 'Ingresa un precio válido', 1800)
+  if (quickForm.price === '' || isNaN(cost) || cost < 0) return toast('warning', 'Ingresa el precio de compra', 1800)
+  if (!salePrice || salePrice <= 0) return toast('warning', 'Ingresa el precio de venta', 1800)
   if (!stock || stock <= 0) return toast('warning', 'Ingresa el stock', 1800)
 
   // Si el código ya existe, no se duplica: se agrega el existente
@@ -302,21 +306,21 @@ const saveQuickProduct = async () => {
     const { data } = await api.post(PRODUCT_CREATE_ENDPOINT, {
       name,
       barcode: code || null,
-      sale_price: price,
+      price: cost,
+      sale_price: salePrice,
       unit_type: quickForm.unit_type,
-      stock,
-      category: quickForm.category.trim() || null
+      stock
     })
 
-    // Acepta { product: {...} }, { data: {...} } o el objeto directo
-    let created = data?.product || data?.data || data
-    if (!created || !created.id) {
+    // Tu backend responde { message, product }
+    let created = data?.product
+    if (created?.id) {
+      products.value.push(created)
+    } else {
       // Respaldo: recarga el catálogo y busca el recién creado
       await loadProducts()
       created = (code && barcodeMap.value.get(normalizeCode(code))) ||
         [...products.value].reverse().find(p => p.name === name)
-    } else {
-      products.value.push(created)
     }
 
     closeQuickCreate()
@@ -327,10 +331,14 @@ const saveQuickProduct = async () => {
     }
   } catch (err) {
     console.error(err)
+    const errors = err?.response?.data?.errors
+    const detail = errors
+      ? Object.entries(errors).map(([k, v]) => `<b>${k}</b>: ${[].concat(v).join(', ')}`).join('<br>')
+      : (err?.response?.data?.message || err?.message || 'Error desconocido')
     Swal.fire({
       icon: 'error',
       title: 'No se pudo registrar',
-      text: err?.response?.data?.message || err?.message || 'Error desconocido'
+      html: `<div style="text-align:left;font-size:14px">${detail}</div>`
     })
   } finally {
     quickSaving.value = false
@@ -1007,9 +1015,14 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
             </button>
           </div>
 
+          <label class="field">
+            <span>Precio de compra {{ quickForm.unit_type === 'WEIGHT' ? 'por kg' : '' }} (S/) *</span>
+            <input v-model="quickForm.price" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" />
+          </label>
+
           <div class="field-row">
             <label class="field">
-              <span>Precio {{ quickForm.unit_type === 'WEIGHT' ? 'por kg' : '' }} (S/) *</span>
+              <span>Precio de venta {{ quickForm.unit_type === 'WEIGHT' ? 'por kg' : '' }} (S/) *</span>
               <input v-model="quickForm.sale_price" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" />
             </label>
             <label class="field">
@@ -1017,14 +1030,6 @@ const saveSale = async ({ customer_name, customer_phone, comment } = {}) => {
               <input v-model="quickForm.stock" type="number" inputmode="decimal" min="0" step="any" />
             </label>
           </div>
-
-          <label class="field">
-            <span>Categoría</span>
-            <input v-model="quickForm.category" type="text" list="quick-categories" placeholder="Opcional" autocomplete="off" />
-            <datalist id="quick-categories">
-              <option v-for="c in categories.filter(c => c !== 'all')" :key="c" :value="c" />
-            </datalist>
-          </label>
         </div>
 
         <div class="weight-actions">
