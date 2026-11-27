@@ -24,7 +24,7 @@
             Abierto ahora
           </div>
 
-          <!-- ── Botón Compartir Catálogo (solo visible para el dueño de la tienda) ── -->
+          <!-- ── Botón Compartir Catálogo (solo visible para el dueño dentro de la app) ── -->
           <button v-if="isOwner" class="share-catalog-btn" @click="shareCatalog" title="Compartir catálogo">
             <span>🔗</span> Compartir Catálogo
           </button>
@@ -268,8 +268,13 @@ const storeTagline = ref('Todo lo que necesitas');
 const storePhone = ref('');
 const activeFilter = ref('all');
 
-// solo el dueño de la tienda (usuario logueado) ve el botón de compartir
+// El botón de compartir solo se ve si el dueño está logueado Y entró desde
+// dentro de la app. Si la página se abre directo desde un link (cliente),
+// no hay "página anterior" en el historial de Vue Router y el botón se oculta.
+const openedFromLink = !window.history.state?.back;
+
 const isOwner = computed(() => {
+  if (openedFromLink) return false;
   try {
     const token = localStorage.getItem('kiopos_token');
     const user = JSON.parse(localStorage.getItem('kiopos_user') || 'null');
