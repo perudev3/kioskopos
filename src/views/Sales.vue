@@ -40,6 +40,15 @@ const transferredAmounts = ref({
 });
 
 /* =========================
+   VENTAS POR COBRAR (se excluyen de la tabla y de los cálculos)
+========================= */
+const isPorCobrar = (sale) => {
+  const method = String(sale?.payment_method || '').trim().toLowerCase();
+  const status = String(sale?.status || '').trim().toLowerCase();
+  return method === 'por_cobrar' || status === 'por_cobrar';
+};
+
+/* =========================
    MONTOS DISPONIBLES (descontando lo ya transferido)
 ========================= */
 const availableNetProfit = computed(() => {
@@ -146,14 +155,22 @@ const loadSales = async () => {
 
     const data = response.data;
 
-    sales.value = data.sales || [];
+    const allSales = data.sales || [];
+    const receivableSales = allSales.filter(isPorCobrar);
+
+    // ÚNICO CAMBIO: se quitan las ventas por cobrar (tabla y cálculos)
+    sales.value = allSales.filter(sale => !isPorCobrar(sale));
+
     summary.value = data.summary || { total_sales_amount: 0, total_count: 0, cash: 0, yape: 0, plin: 0, credit: 0 };
     transferredAmounts.value = data.transferredAmounts || { ganancia_neta: 0, ganancia_venta: 0 };
 
     totalNetProfit.value = calculateNetProfit(sales.value);
     totalProfitSale.value = calculateProfitSale(sales.value);
-    totalSales.value = summary.value.total_count;
-    totalAmount.value = summary.value.total_sales_amount;
+
+    // El resumen del servidor incluye las por cobrar: se les resta su aporte
+    const receivableAmount = receivableSales.reduce((s, sale) => s + Number(sale.total || 0), 0);
+    totalSales.value = Math.max(0, summary.value.total_count - receivableSales.length);
+    totalAmount.value = Math.max(0, Math.round((summary.value.total_sales_amount - receivableAmount) * 100) / 100);
 
   } catch (err) {
     console.error('Error cargando ventas:', err);
